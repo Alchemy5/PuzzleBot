@@ -1,0 +1,124 @@
+PuzzleBot: Assembling Puzzles via a Depth-Image Based Controller
+6.4210 (Robotic Manipulation) Final Project Proposal
+
+Jity Woldemichael			Margulan Ismoldayev			Varun Hariprasad
+         M.I.T.					M.I.T.			         	        M.I.T.
+   Cambridge, MA			    Cambridge, MA			  Cambridge, MA
+   jity@mit.edu		    	  margulan@mit.edu		            varunhpr@mit.edu
+
+
+A. Problem Statement
+
+The goal of this project is to simulate a robotic arm that can assemble jigsaw puzzles. Our minimum viable product will be an arm that, given an almost-finished jigsaw puzzle and various puzzle pieces, guides the missing puzzle piece into its correct pose. This is a difficult control problem because the puzzle piece has to be placed at an exact pose to snap into place without disrupting the rest of the puzzle set. We plan to address this issue with a novel depth-image based controller.
+“The Jigsolver:” A Puzzle-Solving Robot [5].
+B. Motivation
+
+The main technical challenge of this project is the fine-grained control required to guide the puzzle piece into its correct pose. Even with a human hand, it is difficult to avoid disrupting nearby puzzle configurations when snapping a piece into place due to the large amount of contact forces. Building a robotic arm to complete such a task is an achievement that can provide intelligent automation to hairy, real world tasks that require precise, small, and context aware movements. One of the primary use cases we believe this project directly translates to is car manufacturing, where 90% of the industry still uses manual labor for detail-intensive work like trimming, clipping, and wiring harnesses [3]. Providing intelligent automation to these tasks would alleviate both cost and error.
+
+C. Puzzle Setup
+
+Our partially finished jigsaw puzzle will consist of five puzzle pieces with the middle one missing as pictured below. We will initially assemble the four corner pieces into their correct places in a frame, and then weld both the frame and the pieces onto a table. Please note that once we build the minimum viable product, we plan to remove the welding of the corner pieces to make the insertion take place in a more natural, dynamic environment.
+
+
+
+
+
+
+
+
+
+
+
+
+Sketch of unsolved jigsaw puzzle			     Sketch of solved jigsaw puzzle
+
+
+Beyond the jigsaw puzzle, we will also have five geometrically distinct puzzle pieces sitting on a rectangular tray off to the side. One of these shapes will be the missing piece.
+
+
+
+
+
+
+
+
+
+
+			           Sample sketch of tray pieces
+
+For all of the puzzle pieces described, we plan to initially make them heavier and bigger than a normal puzzle piece for convenience. Again, once we have built the minimum viable product, we plan to ablate this constraint to make the simulation more realistic.
+								          
+D. Project Implementation
+
+There will be three stages to our pipeline.
+
+I. Object Recognition & Target Pose Estimation
+
+The first component of our pipeline will involve taking a depth image of the partially completed jigsaw puzzle. We will use this information to estimate what the missing puzzle piece looks like geometrically and construct a basic point cloud representing this puzzle piece. Next, we will similarly construct point clouds for the five pieces in the rectangular tray. We will then run a similarity matching process where we compare point clouds of these five puzzle pieces at all four possible yaw orientations with the point cloud of the missing piece. Through this process, we can conclude which one of the five is the missing piece and what its final yaw orientation should be (roll and pitch are constrained to be zero). In addition to the target orientation, we can estimate the target position by taking the average point positions of the point cloud we initially constructed for the missing piece.
+
+II. Initial Pose Estimation, Grasping, & Motion Planning
+
+Once the target pose is determined, the robot will then need to figure out the initial pose of the puzzle piece, generate good grasps that can pick it up, and plan a collision-free trajectory to the final pose in the frame. Here, we can use standard techniques and algorithms taught in various parts of the class. In particular, to estimate its pose, we expect to use point clouds, ICP, and RANSAC. To grasp the piece, we anticipate to use antipodal heuristic. For the motion planning, we plan to use kinematic trajectory optimization.
+
+III. Insertion Execution
+
+This is the main technical challenge and where we anticipate most of our efforts will go. Our proposed approach is to transport the missing piece to its estimated pose, hover above it, and tilt one end into the empty slot. We will then nudge the piece into its correct place until it snaps into place.
+
+To implement the process, we will first build a 2D depth image of the empty slot. Then, we will use an iterative process, where we nudge the missing piece towards the deepest pixels until it is centered, as determined by an error threshold. For the nudging, we plan to use our own modified force controller, which incorporates two things: (1) depth sensing and (2) wall recoiling. This is our model of the actuator force, though we assume we will have to research and iterate more on it during the life of the project: u = α(f_contact)​ + -β(∇ϕ) + -f_grav, where α and β are positive constants. The first term allows the arm to recoil away from other pieces (“wall contact”). The second term nudges the arm towards the direction of the negative gradient of the depth image, which is the direction of the yet unfilled slot. The third term is just the gravity compensation so that our constants can be small and nimble.
+
+E. Success Metrics
+
+After the main pipeline has been built, we plan to test the arm on how well it succeeds in its task on three different levels: (1) percentage of successful puzzle piece insertion out of 10 attempts; (2) percentage of successful missing piece recognition out of 10 attempts; and (3) percentage of successful final “hover” pose of the missing piece. Beyond solving the final control problem, a big part of this project is building good pick-and-place & motion planning procedures. We want to test as much of our pipeline as possible. The first test examines how well the arm works for its intended purpose, i.e., the entire pipeline. The second test focuses on our initial object detection procedure, where we detect which of the tray pieces is missing. The last test covers both the target/initial pose estimation and motion planning procedures as each would have to work well for the piece to hover above its insertion point. So, we can use this test suite to show the robustness of different parts of our pipeline.
+
+One other really interesting test we want to conduct is one that compares a one shot insertion procedure and our nudging procedure. One such test can examine the percentage of successful puzzle piece insertion out of 10 attempts, where the arm just places the puzzle piece into its final pose and simply pushes down, i.e., avoids the nudging routine. We will compare this metric with the results of test 1 to show if there are any improvements due to our novel controller.
+
+In terms of expectations, we strongly anticipate that the arm will do well with the object recognition, pose estimations, grasping, and motion planning parts of the pipeline as we will be using standard algorithms to solve these problems. Although we also anticipate the insertion execution to do well, we have some level of variance in our expectation as the novel controller we proposed is not tested as far as we know, and will serve as the focus point of our research project. 
+
+E. Related Works
+
+Although there aren’t any researchers who have used a depth-image based controller to solve this task (to our knowledge), there have been many previous projects that have contributed various ideas to this problem.
+
+One such work is “Solving Jigsaw Puzzles by a Robot.” [2] In this paper, the authors present a precise robot arm that places puzzle pieces using image segmentation and edge-matching to solve apictorial (shape-only) jigsaw puzzles. One of the interesting techniques they used is curve-matching to determine a "compatibility score,” where they turned every puzzle piece’s border into a 2D curve and attempted to pair edges from different pieces that could possibly fit by sliding, rotating, and flipping one curve to minimize the distance to the other. This is very interesting to us because we plan to pursue a simpler version of this strategy where we rotate the puzzle piece a number of times and compare it to the empty slot to recognize which piece is missing and decide a final pose for it. Our hope is that, once we get our initial pipeline working, we will make our final estimation process much stronger by using their curve-matching algorithm.
+
+Another similar work is “Integrated Motion Planning for Assembly Task with Part Manipulation.” [1] In this paper, the authors present a robotic arm that solves a 3D puzzle composed of 7 polycube pieces. Like the previous work, their main steps are similar to those of ours (grasping, re-grasping, RRT-Connect, etc.), except they compose the steps into what they call an “integrated planner.” One interesting feature of their paper is the continuous motion optimization to the RRT-Connect algorithm. Instead of checking every edge added to the RRT trees for collisions, they recognize that a lot of edges do not matter to the final path and defer this checking until a candidate path is found. In the case that kinematic trajectory optimization is inefficient for our specific task, we plan to use their planner as a much faster alternative.
+
+Yet another similar work is “Vision-Based Jigsaw Puzzle Solving with a Robotic Arm.” [4] In this paper, the authors present a highly accurate robotic arm that solves jigsaw puzzles of up to 70 pieces using two algorithms: one that is exposed to the full picture and another that is able to work without it. Some of the steps and techniques they utilize are very similar to ours (motion planning, pick and place, etc). However, what caught our eyes is their use of SIFT features to match puzzle pieces to a template image as this approach is invariant to scale, rotation, and lighting. One of our hopes is to complete a stretch task where we make the pieces less distinct from each other. In this case, we would need a strong perception algorithm that would match puzzle pieces to some target image. This strategy would be a great addition to such an algorithm as it has the ability to make our perception more robust to various types of occlusions.
+
+F. Project Timeline
+
+Week
+Tasks
+Nov. 10
+Create simulation scenarios, including the jigsaw puzzle & tray materials scene descriptions and camera placements (marik/varun)
+Create code scaffolding for different parts of the pipeline and assemble the final scene (jity)
+Nov. 18
+Compute the correct puzzle piece from the tray materials (marik)
+Compute the target and initial poses of the correct piece (jity)
+Compute motion planning of puzzle piece from initial to target pose (varun)
+Nov. 24
+Generate grasp candidates for pick-and-place and tilting candidates for insertion (jity)
+Experiment with different α and β constants for the force control equation used in the insertion routine (varun)
+Using the tilting candidate poses and ideal constants, implement the nudging routine for the final insertion (marik)
+Dec. 2
+Run the pipeline end to end and address any issues that occur (jity/marik/varun)
+[Extra task #1] If time allows, adapt system to be able to work with unwelded puzzle pieces (still within a welded frame)
+[Extra task #2] If time allows, adapt system to handle thinner, lighter, and less distinct puzzle pieces
+[Extra task #3] If time allows, implement the curve-matching algorithm seen in Burdea & Wolfson’s paper for a better final pose estimation [2]
+Dec. 8
+Work on final video (marik)
+Work on written report (jity/varun)
+
+
+
+References
+
+[1] A. Ali and J. Y. Lee, “Integrated motion planning for assembly task with part manipulation using re-grasping,” Applied Sciences, vol. 10, no. 3, Art. no. 749, Jan. 2020, doi: 10.3390/app10030749. MDPI. Accessed Oct 30, 2025.
+
+[2] G. C. Burdea and H. J. Wolfson, “Solving jigsaw puzzles by a robot,” IEEE Transactions on Robotics and Automation, vol. 5, no. 6, pp. 752–764, Dec. 1989, doi: 10.1109/70.88097. Research With NJ. Accessed Oct 30, 2025.
+
+[3] G. E. Navas-Reascos, D. Romero, C. A. Rodriguez, F. Guedea, and J. Stahre, “Wire Harness Assembly Process Supported by a Collaborative Robot: A Case Study Focus on Ergonomics,” Robotics, vol. 11, no. 6, p. 131, 2022. [Online]. Available: https://doi.org/10.3390/robotics11060131. Accessed Oct 30, 2025.
+
+[4] C.-H. Ma, C.-L. Lu, and H.-C. Shih, “Vision-based jigsaw puzzle solving with a robotic arm,” Sensors, vol. 23, no. 15, Art. no. 6913, 2023, doi: 10.3390/s23156913. MDPI +1. Accessed Oct 30, 2025.
+
+[5] “The jigsolver: a puzzle-solving robot,” The Sleepy Engineer, Mar. 1, 2015. [Online]. Available: https://sleepyengineer.wordpress.com/2015/03/01/the-jigsolver-a-puzzle-solving-robot/. Accessed Oct 30, 2025.
+
