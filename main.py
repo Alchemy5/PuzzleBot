@@ -20,15 +20,16 @@ triangle_sdf_path = Path("/Users/jity/Desktop/6.4210/PuzzleBot/assets/green_tria
 triangle_sdf_uri = triangle_sdf_path.resolve().as_uri()
 
 square_sdf = ""
-cross_sdf = ""
 semicircle_sdf = ""
 hexagon_sdf = ""
+star_sdf = ""
 
 # puzzle pieces
-upper_left_corner_sdf = ""
-lower_left_corner_sdf = ""
-upper_right_corner_sdf = ""
-lower_right_corner_sdf = ""
+upper_left_corner_sdf = "" # marik
+lower_left_corner_sdf = "" # marik
+upper_right_corner_sdf = "" # marik
+lower_right_corner_sdf = "" # marik
+cross_sdf = "" # marik
 
 
 scenario_string = f"""directives:
