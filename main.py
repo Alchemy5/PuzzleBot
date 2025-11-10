@@ -19,10 +19,10 @@ print("Click the link above to open Meshcat in your browser!")
 triangle_sdf_path = Path("/Users/jity/Desktop/6.4210/PuzzleBot/assets/green_triangle.sdf")
 triangle_sdf_uri = triangle_sdf_path.resolve().as_uri()
 
-square_sdf = ""
-semicircle_sdf = ""
-hexagon_sdf = ""
-star_sdf = ""
+square_sdf = "" # jity
+semicircle_sdf = "" # jity
+hexagon_sdf = "" # varun
+star_sdf = "" # varun
 
 # puzzle pieces
 upper_left_corner_sdf = "" # marik
