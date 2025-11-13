@@ -1,12 +1,12 @@
 <sdf version="1.7">
-  <model name="trapezoid">
-    <link name="trapezoid_link">
+  <model name="weird_polygon">
+    <link name="weird_polygon_link">
       <inertial>
-        <mass>0.150000</mass>
+        <mass>0.351500</mass>
         <inertia>
-          <ixx>1.300000e-04</ixx>
-          <iyy>5.050000e-04</iyy>
-          <izz>6.250000e-04</izz>
+          <ixx>1.561246e-03</ixx>
+          <iyy>1.429433e-03</iyy>
+          <izz>2.967246e-03</izz>
           <ixy>0</ixy>
           <ixz>0</ixz>
           <iyz>0</iyz>
@@ -15,7 +15,7 @@
       <visual name="visual">
         <geometry>
           <mesh>
-            <uri>trapezoid.obj</uri>
+            <uri>weird_polygon.obj</uri>
           </mesh>
         </geometry>
                 <material>
@@ -28,7 +28,7 @@
       <collision name="collision">
         <geometry>
           <mesh>
-            <uri>trapezoid.obj</uri>
+            <uri>weird_polygon.obj</uri>
           </mesh>
         </geometry>
       </collision>

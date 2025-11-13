@@ -27,7 +27,7 @@ assets_dir = repo_root / "assets"
 triangle_sdf_uri = (assets_dir / "green_triangle.sdf").resolve().as_uri()
 my_piece_sdf_uri = (assets_dir / "my_piece.sdf").resolve().as_uri()
 rectangle_sdf_uri = (assets_dir / "rectangle.sdf").resolve().as_uri()
-trapezoid_sdf_uri = (assets_dir / "trapezoid.sdf").resolve().as_uri()
+weird_polygon_sdf_uri = (assets_dir / "weird_polygon.sdf").resolve().as_uri()
 
 square_sdf = ""  # jity
 semicircle_sdf = ""  # jity
@@ -69,7 +69,7 @@ cross_translation = (puzzle_center_x, puzzle_center_y, puzzle_center_z)
 triangle_translation = (0.45, -0.30, table_top_z)
 my_piece_translation = (0.15, 0.65, table_top_z)
 rectangle_translation = (0.30, -0.30, table_top_z)
-trapezoid_translation = (-0.30, -1.30, table_top_z)
+weird_polygon_translation = (-0.30, -1.30, table_top_z)
 
 scenario_string = f"""directives:
 - add_model:
@@ -119,13 +119,13 @@ scenario_string = f"""directives:
         rotation: !Rpy {{ deg: [0, 0, 0] }}
 
 - add_model:
-    name: custom_trapezoid
-    file: "{trapezoid_sdf_uri}"
+    name: custom_weird_polygon
+    file: "{weird_polygon_sdf_uri}"
 - add_weld:
     parent: world
-    child: custom_trapezoid::trapezoid_link
+    child: custom_weird_polygon::weird_polygon_link
     X_PC:
-        translation: {_format_vec(trapezoid_translation)}
+        translation: {_format_vec(weird_polygon_translation)}
         rotation: !Rpy {{ deg: [0, 0, 0] }}
 
 - add_model:
