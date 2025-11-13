@@ -25,6 +25,7 @@ assets_dir = repo_root / "assets"
 
 # assets for tray pieces
 triangle_sdf_uri = (assets_dir / "green_triangle.sdf").resolve().as_uri()
+my_piece_sdf_uri = (assets_dir / "my_piece.sdf").resolve().as_uri()
 
 square_sdf = "" # jity
 semicircle_sdf = "" # jity
@@ -64,6 +65,7 @@ lower_right_translation = (
 )
 cross_translation = (puzzle_center_x, puzzle_center_y, puzzle_center_z)
 triangle_translation = (0.45, -0.30, table_top_z)
+my_piece_translation = (0.15, 0.65, table_top_z)
 
 
 scenario_string = f"""directives:
@@ -101,14 +103,16 @@ scenario_string = f"""directives:
     X_PC:
         translation: [0.0, 0.0, -0.05]
         rotation: !Rpy {{ deg: [0, 0, -90] }}
+
+
 - add_model:
-    name: green_triangle_piece
-    file: "{triangle_sdf_uri}"
+    name: custom_my_piece
+    file: "{my_piece_sdf_uri}"
 - add_weld:
     parent: world
-    child: green_triangle_piece::triangle_link
+    child: custom_my_piece::my_piece_link
     X_PC:
-        translation: {_format_vec(triangle_translation)}
+        translation: {_format_vec(my_piece_translation)}
         rotation: !Rpy {{ deg: [0, 0, 0] }}
 
 - add_model:
