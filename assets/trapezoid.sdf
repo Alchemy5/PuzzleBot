@@ -1,0 +1,37 @@
+<sdf version="1.7">
+  <model name="trapezoid">
+    <link name="trapezoid_link">
+      <inertial>
+        <mass>0.025000</mass>
+        <inertia>
+          <ixx>5.416667e-06</ixx>
+          <iyy>4.708333e-05</iyy>
+          <izz>5.208333e-05</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>trapezoid.obj</uri>
+          </mesh>
+        </geometry>
+                <material>
+                    <ambient>0.050 0.150 0.450 1.000</ambient>
+                    <diffuse>0.100 0.300 0.900 1.000</diffuse>
+                    <specular>0.2 0.2 0.2 1</specular>
+                    <emissive>0 0 0 1</emissive>
+                </material>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <mesh>
+            <uri>trapezoid.obj</uri>
+          </mesh>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>
