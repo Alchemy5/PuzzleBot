@@ -26,11 +26,13 @@ assets_dir = repo_root / "assets"
 # assets for tray pieces
 triangle_sdf_uri = (assets_dir / "green_triangle.sdf").resolve().as_uri()
 my_piece_sdf_uri = (assets_dir / "my_piece.sdf").resolve().as_uri()
+rectangle_sdf_uri = (assets_dir / "rectangle.sdf").resolve().as_uri()
+trapezoid_sdf_uri = (assets_dir / "trapezoid.sdf").resolve().as_uri()
 
-square_sdf = "" # jity
-semicircle_sdf = "" # jity
-hexagon_sdf = "" # varun
-star_sdf = "" # varun
+square_sdf = ""  # jity
+semicircle_sdf = ""  # jity
+rectangle_sdf = ""  # varun
+star_sdf = ""  # varun
 
 # assets for welded puzzle frame
 corner_sdf_uri = (assets_dir / "puzzle_corner.sdf").resolve().as_uri()
@@ -66,7 +68,8 @@ lower_right_translation = (
 cross_translation = (puzzle_center_x, puzzle_center_y, puzzle_center_z)
 triangle_translation = (0.45, -0.30, table_top_z)
 my_piece_translation = (0.15, 0.65, table_top_z)
-
+rectangle_translation = (0.30, -0.30, table_top_z)
+trapezoid_translation = (-0.30, -1.30, table_top_z)
 
 scenario_string = f"""directives:
 - add_model:
@@ -104,6 +107,26 @@ scenario_string = f"""directives:
         translation: [0.0, 0.0, -0.05]
         rotation: !Rpy {{ deg: [0, 0, -90] }}
 
+
+- add_model:
+    name: custom_rectangle
+    file: "{rectangle_sdf_uri}"
+- add_weld:
+    parent: world
+    child: custom_rectangle::my_piece_link
+    X_PC:
+        translation: {_format_vec(rectangle_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 0] }}
+
+- add_model:
+    name: custom_trapezoid
+    file: "{trapezoid_sdf_uri}"
+- add_weld:
+    parent: world
+    child: custom_trapezoid::trapezoid_link
+    X_PC:
+        translation: {_format_vec(trapezoid_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 0] }}
 
 - add_model:
     name: custom_my_piece
