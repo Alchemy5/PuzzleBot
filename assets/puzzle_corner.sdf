@@ -1,0 +1,60 @@
+<sdf version="1.7">
+  <model name="puzzle_corner_piece">
+    <link name="corner_link">
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>1.0e-04</ixx>
+          <iyy>1.0e-04</iyy>
+          <izz>2.0e-04</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <visual name="corner_vertical">
+        <pose>0.0125 0.04 0.005 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.025 0.08 0.01</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.85 0.33 0.10 1</ambient>
+          <diffuse>0.85 0.33 0.10 1</diffuse>
+          <specular>0.2 0.2 0.2 1</specular>
+        </material>
+      </visual>
+      <visual name="corner_horizontal">
+        <pose>0.04 0.0125 0.005 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.08 0.025 0.01</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.85 0.33 0.10 1</ambient>
+          <diffuse>0.85 0.33 0.10 1</diffuse>
+          <specular>0.2 0.2 0.2 1</specular>
+        </material>
+      </visual>
+
+      <collision name="corner_vertical_collision">
+        <pose>0.0125 0.04 0.005 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.025 0.08 0.01</size>
+          </box>
+        </geometry>
+      </collision>
+      <collision name="corner_horizontal_collision">
+        <pose>0.04 0.0125 0.005 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.08 0.025 0.01</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

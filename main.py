@@ -11,25 +11,59 @@ from manipulation.station import (
 from pathlib import Path
 
 
+def _format_vec(vec: tuple[float, float, float]) -> str:
+    return f"[{vec[0]:.3f}, {vec[1]:.3f}, {vec[2]:.3f}]"
+
+
 # Start meshcat for visualization
 meshcat = StartMeshcat()
 print("Click the link above to open Meshcat in your browser!")
 
-# pieces to choose from
-triangle_sdf_path = Path("/Users/jity/Desktop/6.4210/PuzzleBot/assets/green_triangle.sdf")
-triangle_sdf_uri = triangle_sdf_path.resolve().as_uri()
+
+repo_root = Path(__file__).resolve().parent
+assets_dir = repo_root / "assets"
+
+# assets for tray pieces
+triangle_sdf_uri = (assets_dir / "green_triangle.sdf").resolve().as_uri()
 
 square_sdf = "" # jity
 semicircle_sdf = "" # jity
 hexagon_sdf = "" # varun
 star_sdf = "" # varun
 
-# puzzle pieces
-upper_left_corner_sdf = "" # marik
-lower_left_corner_sdf = "" # marik
-upper_right_corner_sdf = "" # marik
-lower_right_corner_sdf = "" # marik
-cross_sdf = "" # marik
+# assets for welded puzzle frame
+corner_sdf_uri = (assets_dir / "puzzle_corner.sdf").resolve().as_uri()
+cross_sdf_uri = (assets_dir / "puzzle_cross.sdf").resolve().as_uri()
+
+
+table_top_z = -0.05 + 0.025  # matches table placement below
+puzzle_center_x = 0.65
+puzzle_center_y = 0.0
+puzzle_center_z = table_top_z
+puzzle_offset = 0.07
+
+upper_right_translation = (
+    puzzle_center_x + puzzle_offset,
+    puzzle_center_y + puzzle_offset,
+    puzzle_center_z,
+)
+upper_left_translation = (
+    puzzle_center_x - puzzle_offset,
+    puzzle_center_y + puzzle_offset,
+    puzzle_center_z,
+)
+lower_left_translation = (
+    puzzle_center_x - puzzle_offset,
+    puzzle_center_y - puzzle_offset,
+    puzzle_center_z,
+)
+lower_right_translation = (
+    puzzle_center_x + puzzle_offset,
+    puzzle_center_y - puzzle_offset,
+    puzzle_center_z,
+)
+cross_translation = (puzzle_center_x, puzzle_center_y, puzzle_center_z)
+triangle_translation = (0.45, -0.30, table_top_z)
 
 
 scenario_string = f"""directives:
@@ -60,7 +94,7 @@ scenario_string = f"""directives:
 
 - add_model:
     name: table
-    file: package://manipulation/table.sdf
+    file: "{(repo_root / 'table.sdf').resolve().as_uri()}"
 - add_weld:
     parent: world
     child: table::table_link
@@ -70,6 +104,58 @@ scenario_string = f"""directives:
 - add_model:
     name: green_triangle_piece
     file: "{triangle_sdf_uri}"
+- add_weld:
+    parent: world
+    child: green_triangle_piece::triangle_link
+    X_PC:
+        translation: {_format_vec(triangle_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 0] }}
+
+- add_model:
+    name: puzzle_upper_right
+    file: "{corner_sdf_uri}"
+- add_weld:
+    parent: world
+    child: puzzle_upper_right::corner_link
+    X_PC:
+        translation: {_format_vec(upper_right_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 0] }}
+- add_model:
+    name: puzzle_upper_left
+    file: "{corner_sdf_uri}"
+- add_weld:
+    parent: world
+    child: puzzle_upper_left::corner_link
+    X_PC:
+        translation: {_format_vec(upper_left_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 90] }}
+- add_model:
+    name: puzzle_lower_left
+    file: "{corner_sdf_uri}"
+- add_weld:
+    parent: world
+    child: puzzle_lower_left::corner_link
+    X_PC:
+        translation: {_format_vec(lower_left_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 180] }}
+- add_model:
+    name: puzzle_lower_right
+    file: "{corner_sdf_uri}"
+- add_weld:
+    parent: world
+    child: puzzle_lower_right::corner_link
+    X_PC:
+        translation: {_format_vec(lower_right_translation)}
+        rotation: !Rpy {{ deg: [0, 0, -90] }}
+- add_model:
+    name: puzzle_cross
+    file: "{cross_sdf_uri}"
+- add_weld:
+    parent: world
+    child: puzzle_cross::cross_link
+    X_PC:
+        translation: {_format_vec(cross_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 0] }}
 """
 scenario = LoadScenario(data=scenario_string)
 station = MakeHardwareStation(scenario, meshcat=meshcat)
