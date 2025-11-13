@@ -33,6 +33,8 @@ square_sdf = ""  # jity
 semicircle_sdf = ""  # jity
 rectangle_sdf = ""  # varun
 star_sdf = ""  # varun
+trapezoid_sdf_uri = (assets_dir / "trapezoid.sdf").resolve().as_uri()
+infinity_sdf_uri = (assets_dir / "infinity.sdf").resolve().as_uri()
 
 # assets for welded puzzle frame
 corner_sdf_uri = (assets_dir / "puzzle_corner.sdf").resolve().as_uri()
@@ -70,6 +72,10 @@ triangle_translation = (0.45, -0.30, table_top_z)
 my_piece_translation = (0.15, 0.65, table_top_z)
 rectangle_translation = (0.30, -0.30, table_top_z)
 weird_polygon_translation = (-0.30, -1.30, table_top_z)
+
+trapezoid_translation = (-0.15, -0.65, table_top_z)
+infinity_translation = (-0.15, 0.65, table_top_z)
+
 
 scenario_string = f"""directives:
 - add_model:
@@ -136,6 +142,26 @@ scenario_string = f"""directives:
     child: custom_my_piece::my_piece_link
     X_PC:
         translation: {_format_vec(my_piece_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 0] }}
+
+- add_model:
+    name: trapezoid
+    file: "{trapezoid_sdf_uri}"
+- add_weld:
+    parent: world
+    child: trapezoid::trapezoid_link
+    X_PC:
+        translation: {_format_vec(trapezoid_translation)}
+        rotation: !Rpy {{ deg: [0, 0, 0] }}
+
+- add_model:
+    name: infinity
+    file: "{infinity_sdf_uri}"
+- add_weld:
+    parent: world
+    child: infinity::infinity_link
+    X_PC:
+        translation: {_format_vec(infinity_translation)}
         rotation: !Rpy {{ deg: [0, 0, 0] }}
 
 - add_model:
