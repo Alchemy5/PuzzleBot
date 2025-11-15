@@ -2,6 +2,10 @@ from pydrake.all import (
     DiagramBuilder,
     Simulator,
     StartMeshcat,
+    InverseKinematics,
+    RotationMatrix,
+    Solve,
+    RigidTransform,
 )
 
 from manipulation.station import (
@@ -9,10 +13,50 @@ from manipulation.station import (
     MakeHardwareStation,
 )
 from pathlib import Path
+import numpy as np
+
 
 
 def _format_vec(vec: tuple[float, float, float]) -> str:
     return f"[{vec[0]:.3f}, {vec[1]:.3f}, {vec[2]:.3f}]"
+
+def get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation):
+    # desired gripper pose, hover directly above the cross piece
+    hover_height = 0.10 
+    p_WG_des = np.array(cross_translation) + np.array([0.0, 0.0, hover_height])
+
+    R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2.0)
+    X_WG_des = RigidTransform(R_WG_des, p_WG_des)
+
+    W = plant.world_frame()
+    wsg_model = plant.GetModelInstanceByName("wsg")
+    G = plant.GetBodyByName("body", wsg_model).body_frame()
+
+    ik.AddPositionConstraint(
+        G, # frameB
+        [0.0, 0.0, 0.0], # p_BQ
+        W, # frameA
+        X_WG_des.translation() - 1e-3, # p_AQ_lower
+        X_WG_des.translation() - 1e-3, # p_AQ_upper
+    )
+
+    ik.AddOrientationConstraint(
+        W, # frameAbar
+        R_WG_des, # R_AbarA
+        G, # frameBbar
+        RotationMatrix(), # R_BbarB
+        1e-3, # theta_bound
+    )
+
+    # small quadratic cost to keep solution well-behaved
+    prog = ik.prog()
+    prog.AddQuadraticErrorCost(np.eye(len(q)), np.zeros(len(q)), q)
+
+    result = Solve(prog)
+    if not result.is_success():
+        raise RuntimeError("ik failed to find a hover configuration")
+    
+    return result.GetSolution(q)
 
 
 # Start meshcat for visualization
@@ -196,6 +240,14 @@ scenario = LoadScenario(data=scenario_string)
 station = MakeHardwareStation(scenario, meshcat=meshcat)
 builder = DiagramBuilder()
 builder.AddSystem(station)
+
+plant = station.GetSubsystemByName("plant")
+plant_context = plant.CreateDefaultContext()
+ik = InverseKinematics(plant, plant_context)
+q = ik.q()
+q_initial = get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation)
+plant.SetDefaultPositions(q_initial)
+
 diagram = builder.Build()
 simulator = Simulator(diagram)
 simulator.set_target_realtime_rate(1.0)
