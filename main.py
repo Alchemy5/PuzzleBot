@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 import trimesh
-from controller import Controller
+from controller import Controller, DepthController
 
 
 
@@ -273,12 +273,21 @@ q = ik.q()
 q_initial = get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation)
 plant.SetDefaultPositions(q_initial)
 
-controller = builder.AddSystem(Controller(q_desired=q_initial))
+# controller = builder.AddSystem(Controller(q_desired=q_initial))
+controller = builder.AddSystem(DepthController(plant))
 
 builder.Connect(
-    station.GetOutputPort("iiwa_state"),  # or similar state port
-    controller.get_input_port(0),
+    station.GetOutputPort("camera_0.depth_image"),
+    controller.depth_port,
 )
+builder.Connect(
+    station.GetOutputPort("iiwa_generalized_contact_forces"),
+    controller.contact_port,
+)
+# builder.Connect(
+#     station.GetOutputPort("iiwa_state"),  # or similar state port
+#     controller.get_input_port(0),
+# )
 builder.Connect(
     controller.get_output_port(0),
     station.GetInputPort("iiwa_actuation"),
@@ -291,13 +300,13 @@ station_context = station.GetMyContextFromRoot(diagram_context)
 color_image = station.GetOutputPort("camera_0.rgb_image").Eval(station_context)
 depth_image = station.GetOutputPort("camera_0.depth_image").Eval(station_context)
 
-plt.subplot(121)
-plt.imshow(color_image.data)
-plt.title("Color image")
-plt.subplot(122)
-plt.imshow(np.squeeze(depth_image.data))
-plt.title("Depth image")
-plt.show()
+# plt.subplot(121)
+# plt.imshow(color_image.data)
+# plt.title("Color image")
+# plt.subplot(122)
+# plt.imshow(np.squeeze(depth_image.data))
+# plt.title("Depth image")
+# plt.show()
 
 simulator = Simulator(diagram)
 simulator.set_target_realtime_rate(1.0)

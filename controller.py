@@ -1,5 +1,12 @@
 import numpy as np
-from pydrake.all import LeafSystem, BasicVector, Context
+from pydrake.all import (
+    LeafSystem,
+    BasicVector,
+    Context,
+    AbstractValue,
+    ImageDepth32F,
+)
+
 class Controller(LeafSystem):
     """PID controller for the IIWA robot"""
 
@@ -45,3 +52,58 @@ class Controller(LeafSystem):
         self.prev_time = current_time
 
         output.set_value(torque)
+
+class DepthController(LeafSystem):
+    def __init__(self, plant) -> None:
+        super().__init__()
+
+        self.plant = plant
+        self.plant_context = plant.CreateDefaultContext()
+
+        self.alpha = 1.0
+        self.beta = 1.0
+
+        # input 1: depth image
+        sample_depth = ImageDepth32F(640, 480)
+        self.depth_port = self.DeclareAbstractInputPort(
+            "depth_image", AbstractValue.Make(sample_depth)
+        )
+
+        # input 2: generalized contact forces on iiwa (from station)
+        self.contact_port = self.DeclareVectorInputPort(
+            "iiwa_contact_forces", 7
+        )
+
+        # output: joint torques
+        self.DeclareVectorOutputPort(
+            "iiwa_torque", 7, self.CalcTorque
+        )
+
+    def CalcTorque(self, context: Context, output: BasicVector) -> None:
+        # contact term
+        f_contact = self.contact_port.Eval(context)
+        tau_contact = -self.alpha * f_contact
+
+        # gradient term - TODO
+        depth_img: ImageDepth32F = self.depth_port.Eval(context)
+        depth = np.array(depth_img.data, copy=False)[:, :, 0]
+
+        valid = np.isfinite(depth)
+        if np.any(valid):
+            gy, gx = np.gradient(depth)
+            H, W = depth.shape
+            cy, cx = H // 2, W // 2
+            grad_phi = np.array([gx[cy, cx], gy[cy, cx]])
+
+            tau_grad = -self.beta * np.array(
+                [grad_phi[0], grad_phi[1], 0, 0, 0, 0, 0]
+            )
+        else:
+            tau_grad = np.zeros(7)
+
+        # gravity term
+        tau_g_full = self.plant.CalcGravityGeneralizedForces(self.plant_context)
+        tau_g = tau_g_full[:7]
+
+        tau = tau_contact + tau_grad - tau_g
+        output.set_value(tau)
