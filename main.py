@@ -14,6 +14,7 @@ from manipulation.station import (
 )
 from pathlib import Path
 import numpy as np
+from controller import Controller
 
 
 
@@ -22,10 +23,10 @@ def _format_vec(vec: tuple[float, float, float]) -> str:
 
 def get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation):
     # desired gripper pose, hover directly above the cross piece
-    hover_height = 0.10 
+    hover_height = 0.20 
     p_WG_des = np.array(cross_translation) + np.array([0.0, 0.0, hover_height])
 
-    R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2.0)
+    R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2)
     X_WG_des = RigidTransform(R_WG_des, p_WG_des)
 
     W = plant.world_frame()
@@ -247,6 +248,17 @@ ik = InverseKinematics(plant, plant_context)
 q = ik.q()
 q_initial = get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation)
 plant.SetDefaultPositions(q_initial)
+
+controller = builder.AddSystem(Controller(q_desired=q_initial))
+
+builder.Connect(
+    station.GetOutputPort("iiwa_state"),  # or similar state port
+    controller.get_input_port(0),
+)
+builder.Connect(
+    controller.get_output_port(0),
+    station.GetInputPort("iiwa_actuation"),
+)
 
 diagram = builder.Build()
 simulator = Simulator(diagram)
