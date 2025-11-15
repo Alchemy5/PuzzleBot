@@ -24,15 +24,8 @@ repo_root = Path(__file__).resolve().parent
 assets_dir = repo_root / "assets"
 
 # assets for tray pieces
-triangle_sdf_uri = (assets_dir / "green_triangle.sdf").resolve().as_uri()
 my_piece_sdf_uri = (assets_dir / "my_piece.sdf").resolve().as_uri()
 rectangle_sdf_uri = (assets_dir / "rectangle.sdf").resolve().as_uri()
-weird_polygon_sdf_uri = (assets_dir / "weird_polygon.sdf").resolve().as_uri()
-
-square_sdf = ""  # jity
-semicircle_sdf = ""  # jity
-rectangle_sdf = ""  # varun
-star_sdf = ""  # varun
 trapezoid_sdf_uri = (assets_dir / "trapezoid.sdf").resolve().as_uri()
 infinity_sdf_uri = (assets_dir / "infinity.sdf").resolve().as_uri()
 
@@ -41,11 +34,12 @@ corner_sdf_uri = (assets_dir / "puzzle_corner.sdf").resolve().as_uri()
 cross_sdf_uri = (assets_dir / "puzzle_cross.sdf").resolve().as_uri()
 
 
-table_top_z = -0.05 + 0.025  # matches table placement below
-puzzle_center_x = 0.65
-puzzle_center_y = 0.0
+# welded puzzle frame translation
+table_top_z = -0.05 + 0.025
+puzzle_center_x = 0.0
+puzzle_center_y = -0.60
 puzzle_center_z = table_top_z
-puzzle_offset = 0.07
+puzzle_offset = 0.01
 
 upper_right_translation = (
     puzzle_center_x + puzzle_offset,
@@ -67,14 +61,13 @@ lower_right_translation = (
     puzzle_center_y - puzzle_offset,
     puzzle_center_z,
 )
-cross_translation = (puzzle_center_x, puzzle_center_y, puzzle_center_z)
-triangle_translation = (0.45, -0.30, table_top_z)
-my_piece_translation = (0.15, 0.65, table_top_z)
-rectangle_translation = (0.30, -0.30, table_top_z)
-weird_polygon_translation = (-0.30, -1.30, table_top_z)
+cross_translation = (puzzle_center_x + 0.04, puzzle_center_y, puzzle_center_z + 0.01)
 
-trapezoid_translation = (-0.15, -0.65, table_top_z)
-infinity_translation = (-0.15, 0.65, table_top_z)
+# tray piece translations
+trapezoid_translation = (-0.15, 0.55, table_top_z)
+infinity_translation = (-0.15, 0.80, table_top_z)
+my_piece_translation = (0.15, 0.75, table_top_z)
+rectangle_translation = (0.0, 0.90, table_top_z)
 
 
 scenario_string = f"""directives:
@@ -123,17 +116,6 @@ scenario_string = f"""directives:
     X_PC:
         translation: {_format_vec(rectangle_translation)}
         rotation: !Rpy {{ deg: [0, 0, 0] }}
-
-- add_model:
-    name: custom_weird_polygon
-    file: "{weird_polygon_sdf_uri}"
-- add_weld:
-    parent: world
-    child: custom_weird_polygon::weird_polygon_link
-    X_PC:
-        translation: {_format_vec(weird_polygon_translation)}
-        rotation: !Rpy {{ deg: [0, 0, 0] }}
-
 - add_model:
     name: custom_my_piece
     file: "{my_piece_sdf_uri}"
