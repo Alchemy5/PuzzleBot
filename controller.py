@@ -82,7 +82,7 @@ class DepthController(LeafSystem):
     def CalcTorque(self, context: Context, output: BasicVector) -> None:
         # contact term
         f_contact = self.contact_port.Eval(context)
-        tau_contact = -self.alpha * f_contact
+        tau_contact = self.alpha * f_contact
 
         # gradient term - TODO
         depth_img: ImageDepth32F = self.depth_port.Eval(context)
