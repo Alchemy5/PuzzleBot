@@ -14,6 +14,8 @@ from manipulation.station import (
 )
 from pathlib import Path
 import numpy as np
+from matplotlib import pyplot as plt
+import trimesh
 from controller import Controller
 
 
@@ -111,9 +113,15 @@ cross_translation = (puzzle_center_x + 0.04, puzzle_center_y, puzzle_center_z + 
 # tray piece translations
 trapezoid_translation = (-0.15, 0.55, table_top_z)
 infinity_translation = (-0.15, 0.80, table_top_z)
-my_piece_translation = (0.15, 0.75, table_top_z)
-rectangle_translation = (0.0, 0.90, table_top_z)
+my_piece_translation = (0.15, 0.52, table_top_z)
+rectangle_translation = (0.07, 0.80, table_top_z)
 
+camera_height = 0.30
+camera_translation = (
+    puzzle_center_x,
+    puzzle_center_y - 0.20,
+    puzzle_center_z + camera_height,
+)
 
 scenario_string = f"""directives:
 - add_model:
@@ -236,6 +244,22 @@ scenario_string = f"""directives:
     X_PC:
         translation: {_format_vec(cross_translation)}
         rotation: !Rpy {{ deg: [0, 0, 0] }}
+
+- add_model:
+    name: camera
+    file: "package://manipulation/camera_box.sdf"
+- add_weld:
+    parent: world
+    child: camera::base
+    X_PC:
+        translation: {_format_vec(camera_translation)}
+        rotation: !Rpy {{ deg: [-140, 0, 0] }}
+
+cameras:
+  overhead:
+    name: camera_0
+    X_PB:
+        base_frame: camera::base
 """
 scenario = LoadScenario(data=scenario_string)
 station = MakeHardwareStation(scenario, meshcat=meshcat)
@@ -261,6 +285,20 @@ builder.Connect(
 )
 
 diagram = builder.Build()
+diagram_context = diagram.CreateDefaultContext()
+
+station_context = station.GetMyContextFromRoot(diagram_context)
+color_image = station.GetOutputPort("camera_0.rgb_image").Eval(station_context)
+depth_image = station.GetOutputPort("camera_0.depth_image").Eval(station_context)
+
+plt.subplot(121)
+plt.imshow(color_image.data)
+plt.title("Color image")
+plt.subplot(122)
+plt.imshow(np.squeeze(depth_image.data))
+plt.title("Depth image")
+plt.show()
+
 simulator = Simulator(diagram)
 simulator.set_target_realtime_rate(1.0)
 simulator.AdvanceTo(50)
