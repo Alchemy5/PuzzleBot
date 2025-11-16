@@ -6,11 +6,13 @@ from pydrake.all import (
     RotationMatrix,
     Solve,
     RigidTransform,
+    Rgba,
 )
 
 from manipulation.station import (
     LoadScenario,
     MakeHardwareStation,
+    AddPointClouds,
 )
 from pathlib import Path
 import numpy as np
@@ -18,6 +20,30 @@ from matplotlib import pyplot as plt
 import trimesh
 from controller import Controller, DepthController
 
+from puzzle_pointclouds import (
+    get_puzzle_and_tray_pointclouds,
+    get_puzzle_pointcloud,
+    get_tray_pointcloud,
+)
+from puzzle_config import (
+    camera_translation,
+    cross_translation,
+    infinity_translation,
+    lower_left_translation,
+    lower_right_translation,
+    my_piece_translation,
+    puzzle_center,
+    puzzle_center_x,
+    puzzle_center_y,
+    puzzle_center_z,
+    puzzle_offset,
+    rectangle_translation,
+    trapezoid_translation,
+    tray_camera_translation,
+    tray_translations,
+    upper_left_translation,
+    upper_right_translation,
+)
 
 
 def _format_vec(vec: tuple[float, float, float]) -> str:
@@ -80,48 +106,6 @@ infinity_sdf_uri = (assets_dir / "infinity.sdf").resolve().as_uri()
 corner_sdf_uri = (assets_dir / "puzzle_corner.sdf").resolve().as_uri()
 cross_sdf_uri = (assets_dir / "puzzle_cross.sdf").resolve().as_uri()
 
-
-# welded puzzle frame translation
-table_top_z = -0.05 + 0.025
-puzzle_center_x = 0.0
-puzzle_center_y = -0.60
-puzzle_center_z = table_top_z
-puzzle_offset = 0.01
-
-upper_right_translation = (
-    puzzle_center_x + puzzle_offset,
-    puzzle_center_y + puzzle_offset,
-    puzzle_center_z,
-)
-upper_left_translation = (
-    puzzle_center_x - puzzle_offset,
-    puzzle_center_y + puzzle_offset,
-    puzzle_center_z,
-)
-lower_left_translation = (
-    puzzle_center_x - puzzle_offset,
-    puzzle_center_y - puzzle_offset,
-    puzzle_center_z,
-)
-lower_right_translation = (
-    puzzle_center_x + puzzle_offset,
-    puzzle_center_y - puzzle_offset,
-    puzzle_center_z,
-)
-cross_translation = (puzzle_center_x + 0.04, puzzle_center_y, puzzle_center_z + 0.01)
-
-# tray piece translations
-trapezoid_translation = (-0.15, 0.55, table_top_z)
-infinity_translation = (-0.15, 0.80, table_top_z)
-my_piece_translation = (0.15, 0.52, table_top_z)
-rectangle_translation = (0.07, 0.80, table_top_z)
-
-camera_height = 0.30
-camera_translation = (
-    puzzle_center_x,
-    puzzle_center_y - 0.20,
-    puzzle_center_z + camera_height,
-)
 
 scenario_string = f"""directives:
 - add_model:
@@ -246,38 +230,80 @@ scenario_string = f"""directives:
         rotation: !Rpy {{ deg: [0, 0, 0] }}
 
 - add_model:
-    name: camera
+    name: puzzle_camera
     file: "package://manipulation/camera_box.sdf"
 - add_weld:
     parent: world
-    child: camera::base
+    child: puzzle_camera::base
     X_PC:
         translation: {_format_vec(camera_translation)}
-        rotation: !Rpy {{ deg: [-140, 0, 0] }}
+        rotation: !Rpy {{ deg: [-160, 0, 0] }}
+
+- add_model:
+    name: tray_camera
+    file: "package://manipulation/camera_box.sdf"
+- add_weld:
+    parent: world
+    child: tray_camera::base
+    X_PC:
+        translation: {_format_vec(tray_camera_translation)}
+        rotation: !Rpy {{ deg: [-150, 0, -10] }}
 
 cameras:
-  overhead:
-    name: camera_0
+  puzzle_camera:
+    name: camera_puzzle
+    depth: true
     X_PB:
-        base_frame: camera::base
+        base_frame: puzzle_camera::base
+
+  tray_camera:
+    name: camera_tray
+    depth: true
+    X_PB:
+        base_frame: tray_camera::base
+
 """
 scenario = LoadScenario(data=scenario_string)
 station = MakeHardwareStation(scenario, meshcat=meshcat)
+
 builder = DiagramBuilder()
-builder.AddSystem(station)
+station_sys = builder.AddSystem(station)
+
+pcd_systems = AddPointClouds(builder=builder, station=station_sys, scenario=scenario)
+print("Point cloud streams available:", list(pcd_systems.keys()))
+
+# Expect keys "camera_puzzle" and "camera_tray" matching the scenario names.
+expected_cloud_keys = {"camera_puzzle", "camera_tray"}
+missing_clouds = expected_cloud_keys.difference(pcd_systems.keys())
+if missing_clouds:
+    raise KeyError(
+        f"Missing expected point cloud streams: {sorted(missing_clouds)}."
+        f" Available streams: {sorted(pcd_systems.keys())}"
+    )
+
+puzzle_pcd_sys = pcd_systems["camera_puzzle"]
+tray_pcd_sys = pcd_systems["camera_tray"]
+
+puzzle_pcd_port = puzzle_pcd_sys.point_cloud_output_port()
+tray_pcd_port = tray_pcd_sys.point_cloud_output_port()
+
+builder.ExportOutput(puzzle_pcd_port, "puzzle.point_cloud")
+builder.ExportOutput(tray_pcd_port, "tray.point_cloud")
+
 
 plant = station.GetSubsystemByName("plant")
-plant_context = plant.CreateDefaultContext()
-ik = InverseKinematics(plant, plant_context)
-q = ik.q()
-q_initial = get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation)
-plant.SetDefaultPositions(q_initial)
+
+# plant_context = plant.CreateDefaultContext()
+# ik = InverseKinematics(plant, plant_context)
+# q = ik.q()
+# q_initial = get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation)
+# plant.SetDefaultPositions(q_initial)
 
 # controller = builder.AddSystem(Controller(q_desired=q_initial))
 controller = builder.AddSystem(DepthController(plant))
 
 builder.Connect(
-    station.GetOutputPort("camera_0.depth_image"),
+    station.GetOutputPort("camera_puzzle.depth_image"),
     controller.depth_port,
 )
 builder.Connect(
@@ -295,18 +321,97 @@ builder.Connect(
 
 diagram = builder.Build()
 diagram_context = diagram.CreateDefaultContext()
+diagram.ForcedPublish(diagram_context)
+
+full_puzzle_cloud = get_puzzle_pointcloud(diagram, diagram_context)
+full_tray_cloud = get_tray_pointcloud(diagram, diagram_context)
+
+puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
+    diagram,
+    diagram_context,
+    puzzle_center=puzzle_center,
+    tray_translations=tray_translations,
+)
+
+print("Puzzle camera cloud has", full_puzzle_cloud.size(), "points")
+print("Tray camera cloud has", full_tray_cloud.size(), "points")
+print("Cropped puzzle cloud has", puzzle_cloud.size(), "points")
+for name, pc in tray_clouds.items():
+    print(f"Tray crop '{name}' has {pc.size()} points")
 
 station_context = station.GetMyContextFromRoot(diagram_context)
-color_image = station.GetOutputPort("camera_0.rgb_image").Eval(station_context)
-depth_image = station.GetOutputPort("camera_0.depth_image").Eval(station_context)
 
-# plt.subplot(121)
-# plt.imshow(color_image.data)
-# plt.title("Color image")
-# plt.subplot(122)
-# plt.imshow(np.squeeze(depth_image.data))
-# plt.title("Depth image")
-# plt.show()
+puzzle_color_image = station.GetOutputPort("camera_puzzle.rgb_image").Eval(station_context)
+puzzle_depth_image = station.GetOutputPort("camera_puzzle.depth_image").Eval(station_context)
+tray_color_image = station.GetOutputPort("camera_tray.rgb_image").Eval(station_context)
+tray_depth_image = station.GetOutputPort("camera_tray.depth_image").Eval(station_context)
+
+meshcat.SetObject(
+    "debug/puzzle/full",
+    full_puzzle_cloud,
+    point_size=0.005,
+    rgba=Rgba(0.0, 0.0, 1.0),
+)
+meshcat.SetObject(
+    "debug/puzzle/cropped",
+    puzzle_cloud,
+    point_size=0.01,
+    rgba=Rgba(1.0, 0.0, 0.0),
+)
+meshcat.SetObject(
+    "debug/tray/full",
+    full_tray_cloud,
+    point_size=0.005,
+    rgba=Rgba(0.7, 0.7, 0.7),
+)
+for name, pc in tray_clouds.items():
+    meshcat.SetObject(
+        f"debug/tray/{name}",
+        pc,
+        point_size=0.01,
+        rgba=Rgba(0.0, 1.0, 0.0),
+    )
+
+def _reshape_color_image(image):
+    data = np.array(image.data, copy=False).reshape(
+        image.height(), image.width(), -1
+    )
+    return data[..., :3]
+
+def _reshape_depth_image(image):
+    depth = np.array(image.data, copy=False).reshape(
+        image.height(), image.width()
+    )
+    return np.ma.masked_invalid(depth)
+
+puzzle_color = _reshape_color_image(puzzle_color_image)
+puzzle_depth = _reshape_depth_image(puzzle_depth_image)
+tray_color = _reshape_color_image(tray_color_image)
+tray_depth = _reshape_depth_image(tray_depth_image)
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+axes[0, 0].imshow(puzzle_color)
+axes[0, 0].set_title("Puzzle camera RGB")
+axes[0, 0].axis("off")
+
+im = axes[0, 1].imshow(puzzle_depth, cmap="magma")
+axes[0, 1].set_title("Puzzle camera depth")
+axes[0, 1].axis("off")
+fig.colorbar(im, ax=axes[0, 1], fraction=0.046, pad=0.04)
+
+axes[1, 0].imshow(tray_color)
+axes[1, 0].set_title("Tray camera RGB")
+axes[1, 0].axis("off")
+
+im = axes[1, 1].imshow(tray_depth, cmap="magma")
+axes[1, 1].set_title("Tray camera depth")
+axes[1, 1].axis("off")
+fig.colorbar(im, ax=axes[1, 1], fraction=0.046, pad=0.04)
+
+plt.tight_layout()
+plt.show()
+
 
 simulator = Simulator(diagram)
 simulator.set_target_realtime_rate(1.0)
