@@ -88,18 +88,14 @@ class DepthController(LeafSystem):
         depth_img: ImageDepth32F = self.depth_port.Eval(context)
         depth = np.array(depth_img.data, copy=False)[:, :, 0]
 
-        valid = np.isfinite(depth)
-        if np.any(valid):
-            gy, gx = np.gradient(depth)
-            H, W = depth.shape
-            cy, cx = H // 2, W // 2
-            grad_phi = np.array([gx[cy, cx], gy[cy, cx]])
+        gy, gx = np.gradient(depth)
+        H, W = depth.shape
+        cy, cx = H // 2, W // 2
+        grad_phi = np.array([gx[cy, cx], gy[cy, cx]])
 
-            tau_grad = -self.beta * np.array(
-                [grad_phi[0], grad_phi[1], 0, 0, 0, 0, 0]
-            )
-        else:
-            tau_grad = np.zeros(7)
+        tau_grad = -self.beta * np.array(
+            [grad_phi[0], grad_phi[1], 0, 0, 0, 0, 0]
+        )
 
         # gravity term
         tau_g_full = self.plant.CalcGravityGeneralizedForces(self.plant_context)
