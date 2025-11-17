@@ -69,6 +69,24 @@ def largest_region(points, radius=0.01):
     return pts[best]
 
 
+def pointcloud_similarity(P, Q):
+    P = np.asarray(P, float)
+    Q = np.asarray(Q, float)
+    if len(P) == 0 or len(Q) == 0:
+        return 0.0  # or np.nan / raise, your choice
+
+    # pairwise squared distances, shape (len(P), len(Q))
+    d2 = np.sum((P[:, None, :] - Q[None, :, :]) ** 2, axis=-1)
+
+    # symmetric Chamfer distance
+    d_pq = np.mean(np.min(d2, axis=1))
+    d_qp = np.mean(np.min(d2, axis=0))
+    chamfer = d_pq + d_qp
+
+    # turn distance into similarity in [0, 1)
+    return 1.0 / (1.0 + chamfer)
+
+
 """
 Old
 def find_two_centers(x, max_iter=100, tol=1e-6, seed=0):
