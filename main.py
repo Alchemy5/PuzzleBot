@@ -8,6 +8,7 @@ from pydrake.all import (
     RigidTransform,
     Rgba,
 )
+from pydrake.perception import PointCloud
 
 from manipulation.station import (
     LoadScenario,
@@ -45,13 +46,20 @@ from puzzle_config import (
     upper_right_translation,
 )
 
+from src.missing_piece_estimation import (
+    find_closest_z_center,
+    find_z_centers,
+    largest_region,
+)
+
 
 def _format_vec(vec: tuple[float, float, float]) -> str:
     return f"[{vec[0]:.3f}, {vec[1]:.3f}, {vec[2]:.3f}]"
 
+
 def get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation):
     # desired gripper pose, hover directly above the cross piece
-    hover_height = 0.20 
+    hover_height = 0.20
     p_WG_des = np.array(cross_translation) + np.array([0.0, 0.0, hover_height])
 
     R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2)
@@ -62,19 +70,19 @@ def get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation):
     G = plant.GetBodyByName("body", wsg_model).body_frame()
 
     ik.AddPositionConstraint(
-        G, # frameB
-        [0.0, 0.0, 0.0], # p_BQ
-        W, # frameA
-        X_WG_des.translation() - 1e-3, # p_AQ_lower
-        X_WG_des.translation() - 1e-3, # p_AQ_upper
+        G,  # frameB
+        [0.0, 0.0, 0.0],  # p_BQ
+        W,  # frameA
+        X_WG_des.translation() - 1e-3,  # p_AQ_lower
+        X_WG_des.translation() - 1e-3,  # p_AQ_upper
     )
 
     ik.AddOrientationConstraint(
-        W, # frameAbar
-        R_WG_des, # R_AbarA
-        G, # frameBbar
-        RotationMatrix(), # R_BbarB
-        1e-3, # theta_bound
+        W,  # frameAbar
+        R_WG_des,  # R_AbarA
+        G,  # frameBbar
+        RotationMatrix(),  # R_BbarB
+        1e-3,  # theta_bound
     )
 
     # small quadratic cost to keep solution well-behaved
@@ -84,7 +92,7 @@ def get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation):
     result = Solve(prog)
     if not result.is_success():
         raise RuntimeError("ik failed to find a hover configuration")
-    
+
     return result.GetSolution(q)
 
 
@@ -333,6 +341,36 @@ puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
     tray_translations=tray_translations,
 )
 
+####### TODO: Move following section to its own separate file ########
+points = puzzle_cloud.xyzs().T
+# Step 1: Identify negative space
+center1, center2 = find_z_centers(points)
+min_center = min(center1, center2)  # corresponds to negative space
+max_center = max(center1, center2)  # corresponds to boundary puzzle pieces
+
+negative_space_points = []
+for point in points:
+    closest_center = find_closest_z_center(point, min_center, max_center)
+    if closest_center == min_center:
+        negative_space_points.append(point)
+
+# now choose largest continuous region for these negative space points
+
+largest_negative_region = largest_region(negative_space_points)
+
+neg_pts = np.asarray(largest_negative_region)
+cloud_neg = PointCloud(new_size=neg_pts.shape[0])
+cloud_neg.mutable_xyzs()[:] = neg_pts.T
+meshcat.SetObject(
+    "negative_space",
+    cloud_neg,
+    point_size=0.01,
+    rgba=Rgba(0.0, 1.0, 0.0),
+)
+import pdb
+
+pdb.set_trace()
+######################################################################
 print("Puzzle camera cloud has", full_puzzle_cloud.size(), "points")
 print("Tray camera cloud has", full_tray_cloud.size(), "points")
 print("Cropped puzzle cloud has", puzzle_cloud.size(), "points")
@@ -341,10 +379,16 @@ for name, pc in tray_clouds.items():
 
 station_context = station.GetMyContextFromRoot(diagram_context)
 
-puzzle_color_image = station.GetOutputPort("camera_puzzle.rgb_image").Eval(station_context)
-puzzle_depth_image = station.GetOutputPort("camera_puzzle.depth_image").Eval(station_context)
+puzzle_color_image = station.GetOutputPort("camera_puzzle.rgb_image").Eval(
+    station_context
+)
+puzzle_depth_image = station.GetOutputPort("camera_puzzle.depth_image").Eval(
+    station_context
+)
 tray_color_image = station.GetOutputPort("camera_tray.rgb_image").Eval(station_context)
-tray_depth_image = station.GetOutputPort("camera_tray.depth_image").Eval(station_context)
+tray_depth_image = station.GetOutputPort("camera_tray.depth_image").Eval(
+    station_context
+)
 
 meshcat.SetObject(
     "debug/puzzle/full",
@@ -372,17 +416,16 @@ for name, pc in tray_clouds.items():
         rgba=Rgba(0.0, 1.0, 0.0),
     )
 
+
 def _reshape_color_image(image):
-    data = np.array(image.data, copy=False).reshape(
-        image.height(), image.width(), -1
-    )
+    data = np.array(image.data, copy=False).reshape(image.height(), image.width(), -1)
     return data[..., :3]
 
+
 def _reshape_depth_image(image):
-    depth = np.array(image.data, copy=False).reshape(
-        image.height(), image.width()
-    )
+    depth = np.array(image.data, copy=False).reshape(image.height(), image.width())
     return np.ma.masked_invalid(depth)
+
 
 puzzle_color = _reshape_color_image(puzzle_color_image)
 puzzle_depth = _reshape_depth_image(puzzle_depth_image)
