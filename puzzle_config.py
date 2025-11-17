@@ -38,7 +38,7 @@ cross_translation = (
 
 trapezoid_translation = (-0.15, 0.55, table_top_z)
 infinity_translation = (-0.15, 0.80, table_top_z)
-my_piece_translation = (0.15, 0.52, table_top_z)
+my_piece_translation = (0.12, 0.52, table_top_z)
 rectangle_translation = (0.07, 0.80, table_top_z)
 
 camera_height = 0.45
@@ -49,8 +49,8 @@ camera_translation = (
 )
 
 tray_camera_translation = (
-    0.0,
-    0.45,
+    0.10,
+    0.40,
     puzzle_center_z + camera_height,
 )
 
@@ -60,4 +60,5 @@ tray_translations = {
     "my_piece": my_piece_translation,
     "trapezoid": trapezoid_translation,
     "infinity": infinity_translation,
+    "cross": cross_translation,
 }

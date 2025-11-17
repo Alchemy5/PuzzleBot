@@ -16,6 +16,7 @@
         <geometry>
           <mesh>
             <uri>infinity.obj</uri>
+            <scale>1 1 2</scale>
           </mesh>
         </geometry>
                 <material>
@@ -29,6 +30,7 @@
         <geometry>
           <mesh>
             <uri>infinity.obj</uri>
+            <scale>1 1 2</scale>
           </mesh>
         </geometry>
       </collision>

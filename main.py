@@ -247,7 +247,7 @@ scenario_string = f"""directives:
     child: tray_camera::base
     X_PC:
         translation: {_format_vec(tray_camera_translation)}
-        rotation: !Rpy {{ deg: [-150, 0, -10] }}
+        rotation: !Rpy {{ deg: [-150, 0, 0] }}
 
 cameras:
   puzzle_camera:

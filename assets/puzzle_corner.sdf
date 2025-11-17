@@ -13,10 +13,10 @@
         </inertia>
       </inertial>
       <visual name="corner_vertical">
-        <pose>0.0125 0.04 0.005 0 0 0</pose>
+        <pose>0.0125 0.04 0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.025 0.08 0.01</size>
+            <size>0.025 0.08 0.02</size>
           </box>
         </geometry>
         <material>
@@ -26,10 +26,10 @@
         </material>
       </visual>
       <visual name="corner_horizontal">
-        <pose>0.04 0.0125 0.005 0 0 0</pose>
+        <pose>0.04 0.0125 0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.08 0.025 0.01</size>
+            <size>0.08 0.025 0.02</size>
           </box>
         </geometry>
         <material>
@@ -40,18 +40,18 @@
       </visual>
 
       <collision name="corner_vertical_collision">
-        <pose>0.0125 0.04 0.005 0 0 0</pose>
+        <pose>0.0125 0.04 0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.025 0.08 0.01</size>
+            <size>0.025 0.08 0.02</size>
           </box>
         </geometry>
       </collision>
       <collision name="corner_horizontal_collision">
-        <pose>0.04 0.0125 0.005 0 0 0</pose>
+        <pose>0.04 0.0125 0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.08 0.025 0.01</size>
+            <size>0.08 0.025 0.02</size>
           </box>
         </geometry>
       </collision>
