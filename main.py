@@ -405,9 +405,9 @@ meshcat.SetObject(
     point_size=0.01,
     rgba=Rgba(0.0, 1.0, 0.0),
 )
-import pdb
+# import pdb
 
-pdb.set_trace()
+# pdb.set_trace()
 ######################################################################
 print("Puzzle camera cloud has", full_puzzle_cloud.size(), "points")
 print("Tray camera cloud has", full_tray_cloud.size(), "points")
