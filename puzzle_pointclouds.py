@@ -14,7 +14,7 @@ from puzzle_config import (
     tray_translations as DEFAULT_TRAY_TRANSLATIONS,
 )
 
-PUZZLE_HALF_EXTENTS = np.array([0.08, 0.08, 0.04])
+PUZZLE_HALF_EXTENTS = np.array([0.06, 0.06, 0.03])
 TRAY_SEARCH_RADIUS = 0.18
 TRAY_CROP_MARGIN_XY = 0.025
 TRAY_CROP_MARGIN_Z = 0.01
@@ -339,9 +339,7 @@ def get_puzzle_and_tray_pointclouds(
     print_pointcloud_bounds(puzzle_pc_full, "puzzle_full_cloud")
     print_pointcloud_bounds(puzzle_cloud, "puzzle_cropped_cloud")
 
-    if clearance is not None:
-        puzzle_cloud = _filter_points_above(puzzle_cloud, table_top_z, clearance)
-        print_pointcloud_bounds(puzzle_cloud, "puzzle_filtered_cloud")
+    # Keep the full puzzle surface so downstream depth-based cavity detection still sees the table.
 
     tray_pc_full = get_tray_pointcloud(diagram, context)
     print_pointcloud_bounds(tray_pc_full, "tray_full_cloud")
@@ -378,6 +376,9 @@ def get_puzzle_and_tray_pointclouds(
         expected_bounds[name] = (expected_lower, expected_upper)
 
     tray_xyz_filtered = np.asarray(tray_pc_for_cropping.xyzs())
+    if tray_xyz_filtered.size:
+        finite_mask = np.isfinite(tray_xyz_filtered).all(axis=0)
+        tray_xyz_filtered = tray_xyz_filtered[:, finite_mask]
     filtered_labels, num_components = _connected_components(
         tray_xyz_filtered, TRAY_COMPONENT_RADIUS
     )
