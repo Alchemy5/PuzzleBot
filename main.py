@@ -403,8 +403,22 @@ meshcat.SetObject(
 # Compute similarity scores between tray pieces and missing piece
 for piece, pos_pts in tray_piece_tight_clouds.items():
     print(f"######## {piece} and missing piece (cross) similarity score ########")
-    score = cloud_similarity(pos_pts, neg_pts)
-    print(score)
+    score, newB, R, t = cloud_similarity(neg_pts, pos_pts)
+    print(f"Score: {score}")
+    print(f"Rotation Matrix: {R}")
+    print(f"Translation: {t}")
+    # Visualize new B pose
+    cloud_translated = PointCloud(new_size=newB.shape[0])
+    cloud_translated.mutable_xyzs()[:] = newB.T
+    if piece == "cross":
+        meshcat.SetObject(
+            f"similarity - cross - {piece}",
+            cloud_translated,
+            point_size=0.01,
+            rgba=Rgba(1.0, 0.0, 0.0),  # bright red to stand out
+        )
+
+
 import pdb
 
 pdb.set_trace()
