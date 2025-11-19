@@ -1,31 +1,11 @@
 import numpy as np
-
-
-# Step 1: Given an almost finished puzzle, estimate shape of missing piece/cavity -> negative space detection
-# Step 2: Given an array of point clouds, match the shape of the missing piece with one of the point clouds
-# Step 3: Estimate pose of missing piece relative to initial pose of missing piece
-
-# assuming missing puzzle point cloud is cropped such that flat table background is not present/only puzzle set point cloud data is present along with that of gap
-
-# loop through point cloud data and identify two depths: one depth for the puzzle pieces and one depth for the areas without puzzle piece
-# filter out all point clouds corresponding to d1 such that only left with d2
-
-# use to compute outline of missing puzzle piece
-
-# given convex shapes of other point clouds rotate them and compute similarity scores between the two based on icp principles
-
-# how to work with point cloud?
-
-# assume it is a 3 x N array of points is point cloud
-
-
-# given an array with the values being close to either one of two central values how to find these two central values?
-# k means with 2 clusters
+from sklearn.cluster import DBSCAN
+from scipy.spatial import cKDTree
 
 
 def find_z_centers(points):
     z = points[:, 2]
-    centers = np.array([z.min(), z.max()], dtype=float)
+    centers = np.array([z.min(), z.max()])
 
     for _ in range(10):
         labels = np.abs(z[:, None] - centers[None, :]).argmin(axis=1)
@@ -43,79 +23,86 @@ def find_closest_z_center(point, center1, center2):
 
 
 def largest_region(points, radius=0.01):
-    pts = np.asarray(points, float)
-    n = len(pts)
-    if n == 0:
-        return pts
-    d = pts[:, None, :] - pts[None, :, :]
-    A = np.sum(d * d, axis=-1) <= radius * radius
-    vis = np.zeros(n, bool)
-    best = []
-    for i in range(n):
-        if vis[i]:
-            continue
-        stack = [i]
-        vis[i] = True
-        comp = []
-        while stack:
-            j = stack.pop()
-            comp.append(j)
-            for k in np.nonzero(A[j])[0]:
-                if not vis[k]:
-                    vis[k] = True
-                    stack.append(k)
-        if len(comp) > len(best):
-            best = comp
-    return pts[best]
+    pts = np.asarray(points)
+
+    # eps = radius, min_samples=1 ensures every point belongs to some cluster
+    labels = DBSCAN(eps=radius, min_samples=1).fit_predict(pts)
+
+    # Find label of the largest cluster
+    uniq, counts = np.unique(labels, return_counts=True)
+    best_label = uniq[np.argmax(counts)]
+
+    return pts[labels == best_label]
 
 
-"""
-Old
-def find_two_centers(x, max_iter=100, tol=1e-6, seed=0):
-    x = np.asarray(x).ravel()  # ensure 1D
-    rng = np.random.default_rng(seed)
+def cloud_similarity(
+    cloudA, cloudB
+):  # already numpy arrays of n x d where n is num points and d is dimensions
+    # import pdb
+    # pdb.set_trace()
 
-    # 1. Initialize centers by picking two random points
-    centers = rng.choice(x, size=2, replace=False)
+    # --- project to XY ---
+    cloudA_xy = cloudA[:, :2]
+    cloudB_xy = cloudB[:, :2]
 
-    for _ in range(max_iter):
-        old_centers = centers.copy()
+    # --- normalize (center + scale to unit radius) ---
+    for pts_name in ["A", "B"]:
+        pts = cloudA_xy if pts_name == "A" else cloudB_xy
+        pts -= pts.mean(axis=0, keepdims=True)
+        max_r = np.linalg.norm(pts, axis=1).max()
+        if max_r > 0:
+            pts /= max_r
+        if pts_name == "A":
+            cloudA_xy = pts
+        else:
+            cloudB_xy = pts
 
-        # 2. Assign each point to the nearest center
-        # distances shape: (n_points, 2)
-        distances = np.abs(x[:, None] - centers[None, :])
-        labels = np.argmin(distances, axis=1)
+    # --- build descriptors: [cov eigenvalues (2), radial histogram (32)] ---
+    nbins = 32
 
-        # 3. Recompute centers as the mean of assigned points
-        for k in range(2):
-            cluster_points = x[labels == k]
-            if len(cluster_points) > 0:
-                centers[k] = cluster_points.mean()
+    # A: covariance eigenvalues
+    if cloudA_xy.shape[0] >= 2:
+        covA = np.cov(cloudA_xy.T)
+        eigsA, _ = np.linalg.eig(covA)
+        eigsA = np.sort(np.real(eigsA))
+    else:
+        eigsA = np.array([0.0, 0.0], dtype=np.float64)
 
-        # 4. Check for convergence
-        if np.max(np.abs(centers - old_centers)) < tol:
-            break
+    # A: radial histogram
+    rA = np.linalg.norm(cloudA_xy, axis=1)
+    histA, _ = np.histogram(rA, bins=nbins, range=(0.0, 1.0), density=True)
+    histA = histA.astype(np.float64)
+    sA = histA.sum()
+    if sA > 0:
+        histA /= sA
+    descA = np.concatenate([eigsA, histA])
 
-    # Sort centers so (center1 < center2) for consistency
-    centers = np.sort(centers)
-    return centers
+    # B: covariance eigenvalues
+    if cloudB_xy.shape[0] >= 2:
+        covB = np.cov(cloudB_xy.T)
+        eigsB, _ = np.linalg.eig(covB)
+        eigsB = np.sort(np.real(eigsB))
+    else:
+        eigsB = np.array([0.0, 0.0], dtype=np.float64)
 
+    # B: radial histogram
+    rB = np.linalg.norm(cloudB_xy, axis=1)
+    histB, _ = np.histogram(rB, bins=nbins, range=(0.0, 1.0), density=True)
+    histB = histB.astype(np.float64)
+    sB = histB.sum()
+    if sB > 0:
+        histB /= sB
+    descB = np.concatenate([eigsB, histB])
 
-rng = np.random.default_rng(seed=42)
-N = 100
+    # --- cosine similarity in [0, 1] ---
+    nA = np.linalg.norm(descA)
+    nB = np.linalg.norm(descB)
+    if nA == 0 or nB == 0:
+        return 0.0
 
-arr = rng.random((3, 100))
-print(arr.T)
-center1, center2 = 0.0, 1.0
-negative_space_points = []
+    sim = float(np.dot(descA, descB) / (nA * nB))
+    # numerical guard: map [-1,1] → [0,1]
+    sim = max(min(sim, 1.0), -1.0)
+    sim = 0.5 * (sim + 1.0)
 
-for point in arr.T:
-    if np.abs(point[2] - center1) > np.abs(point[2] - center2):
-    continue
-	else:
-    negative_space_points.append(point)
-
-# do convex hull around this set of negative_space_points
-
-# then try figuring out pose from this however what happens next heavily depends on what is given by Marik
-"""
+    return sim
