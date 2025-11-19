@@ -50,6 +50,7 @@ from src.missing_piece_estimation import (
     find_closest_z_center,
     find_z_centers,
     largest_region,
+    cloud_similarity,
 )
 
 
@@ -342,23 +343,54 @@ puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
 )
 
 ####### TODO: Move following section to its own separate file ########
-points = puzzle_cloud.xyzs().T
-# Step 1: Identify negative space
-center1, center2 = find_z_centers(points)
+
+puzzle_points = puzzle_cloud.xyzs().T
+
+tray_piece_tight_clouds = {}  # dict to map name of piece to refined positive clouds
+for piece in tray_clouds:
+    cloud = tray_clouds[piece]
+    points = cloud.xyzs().T
+    center1, center2 = find_z_centers(puzzle_points)
+
+    min_center = min(center1, center2)
+    max_center = max(center1, center2)
+
+    # we want max center now
+    positive_space_points = []
+    for point in points:
+        closest_center = find_closest_z_center(point, min_center, max_center)
+        if closest_center == max_center:
+            positive_space_points.append(point)
+
+    pos = largest_region(positive_space_points)
+
+    cloud_pos = PointCloud(new_size=pos.shape[0])
+    cloud_pos.mutable_xyzs()[:] = pos.T
+    meshcat.SetObject(
+        piece,
+        cloud_pos,
+        point_size=0.01,
+        rgba=Rgba(0.0, 1.0, 0.0),
+    )
+
+    tray_piece_tight_clouds[piece] = pos
+
+
+# Identify negative space
+center1, center2 = find_z_centers(puzzle_points)
 min_center = min(center1, center2)  # corresponds to negative space
 max_center = max(center1, center2)  # corresponds to boundary puzzle pieces
 
 negative_space_points = []
-for point in points:
+for point in puzzle_points:
     closest_center = find_closest_z_center(point, min_center, max_center)
     if closest_center == min_center:
         negative_space_points.append(point)
 
 # now choose largest continuous region for these negative space points
 
-largest_negative_region = largest_region(negative_space_points)
+neg_pts = largest_region(negative_space_points)
 
-neg_pts = np.asarray(largest_negative_region)
 cloud_neg = PointCloud(new_size=neg_pts.shape[0])
 cloud_neg.mutable_xyzs()[:] = neg_pts.T
 meshcat.SetObject(
@@ -367,9 +399,15 @@ meshcat.SetObject(
     point_size=0.01,
     rgba=Rgba(0.0, 1.0, 0.0),
 )
-# import pdb
 
-# pdb.set_trace()
+# Compute similarity scores between tray pieces and missing piece
+for piece, pos_pts in tray_piece_tight_clouds.items():
+    print(f"######## {piece} and missing piece (cross) similarity score ########")
+    score = cloud_similarity(pos_pts, neg_pts)
+    print(score)
+import pdb
+
+pdb.set_trace()
 ######################################################################
 print("Puzzle camera cloud has", full_puzzle_cloud.size(), "points")
 print("Tray camera cloud has", full_tray_cloud.size(), "points")
