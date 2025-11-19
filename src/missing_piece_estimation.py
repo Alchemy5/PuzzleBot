@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.cluster import DBSCAN
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 
 
 def find_z_centers(points):
@@ -35,74 +35,74 @@ def largest_region(points, radius=0.01):
     return pts[labels == best_label]
 
 
-def cloud_similarity(
+def cloud_similarity(  # A is negative space and B is positive space
     cloudA, cloudB
 ):  # already numpy arrays of n x d where n is num points and d is dimensions
-    # import pdb
-    # pdb.set_trace()
+    def FindClosestPoints(query_points, reference_points):
+        """
+        Finds the nearest (Euclidean) neighbor in reference_points for each
+        point in query_points. inputs are two n x 2 point cloud arrays
+        """
+        indices = np.empty(query_points.shape[0], dtype=int)
 
-    # --- project to XY ---
+        kdtree = KDTree(reference_points)
+        for i in range(query_points.shape[0]):
+            distance, indices[i] = kdtree.query(query_points[i, :], k=1)
+
+        return indices
+
+    # project to xy helps since we only care about this plane
     cloudA_xy = cloudA[:, :2]
     cloudB_xy = cloudB[:, :2]
 
-    # --- normalize (center + scale to unit radius) ---
-    for pts_name in ["A", "B"]:
-        pts = cloudA_xy if pts_name == "A" else cloudB_xy
-        pts -= pts.mean(axis=0, keepdims=True)
-        max_r = np.linalg.norm(pts, axis=1).max()
-        if max_r > 0:
-            pts /= max_r
-        if pts_name == "A":
-            cloudA_xy = pts
-        else:
-            cloudB_xy = pts
+    max_iterations = 30
+    tolerance = 1e-5
 
-    # --- build descriptors: [cov eigenvalues (2), radial histogram (32)] ---
-    nbins = 32
+    R = np.eye(2)
+    t = np.zeros(2)
 
-    # A: covariance eigenvalues
-    if cloudA_xy.shape[0] >= 2:
-        covA = np.cov(cloudA_xy.T)
-        eigsA, _ = np.linalg.eig(covA)
-        eigsA = np.sort(np.real(eigsA))
-    else:
-        eigsA = np.array([0.0, 0.0], dtype=np.float64)
+    prev_error = np.inf
 
-    # A: radial histogram
-    rA = np.linalg.norm(cloudA_xy, axis=1)
-    histA, _ = np.histogram(rA, bins=nbins, range=(0.0, 1.0), density=True)
-    histA = histA.astype(np.float64)
-    sA = histA.sum()
-    if sA > 0:
-        histA /= sA
-    descA = np.concatenate([eigsA, histA])
+    for _ in range(max_iterations):
+        B_xy_transformed = cloudB_xy @ R.T + t
+        indices = FindClosestPoints(B_xy_transformed, cloudA_xy)
+        A_match = cloudA_xy[indices]
 
-    # B: covariance eigenvalues
-    if cloudB_xy.shape[0] >= 2:
-        covB = np.cov(cloudB_xy.T)
-        eigsB, _ = np.linalg.eig(covB)
-        eigsB = np.sort(np.real(eigsB))
-    else:
-        eigsB = np.array([0.0, 0.0], dtype=np.float64)
+        centroid_B = B_xy_transformed.mean(axis=0)
+        centroid_A = A_match.mean(axis=0)
 
-    # B: radial histogram
-    rB = np.linalg.norm(cloudB_xy, axis=1)
-    histB, _ = np.histogram(rB, bins=nbins, range=(0.0, 1.0), density=True)
-    histB = histB.astype(np.float64)
-    sB = histB.sum()
-    if sB > 0:
-        histB /= sB
-    descB = np.concatenate([eigsB, histB])
+        # center at origin
+        B_centered = B_xy_transformed - centroid_B
+        A_centered = A_match - centroid_A
 
-    # --- cosine similarity in [0, 1] ---
-    nA = np.linalg.norm(descA)
-    nB = np.linalg.norm(descB)
-    if nA == 0 or nB == 0:
-        return 0.0
+        H = B_centered.T @ A_centered
 
-    sim = float(np.dot(descA, descB) / (nA * nB))
-    # numerical guard: map [-1,1] → [0,1]
-    sim = max(min(sim, 1.0), -1.0)
-    sim = 0.5 * (sim + 1.0)
+        U, S, Vt = np.linalg.svd(H)
 
-    return sim
+        # incremental rotation that best aligns B to A
+        R_delta = Vt.T @ U.T
+
+        if np.linalg.det(R_delta) < 0:
+            Vt[1, :] *= -1
+            R_delta = Vt.T @ U.T
+
+        # compute incremental translation best aligning B to A
+        t_delta = centroid_A - centroid_B @ R_delta.T
+
+        R = R_delta @ R
+        t = R_delta @ t + t_delta
+
+        B_xy_transformed = cloudB_xy @ R.T + t
+
+        errors = np.linalg.norm(A_match - B_xy_transformed, axis=1)
+        mean_error = errors.mean()
+
+        if abs(prev_error - mean_error) < tolerance:
+            break
+        prev_error = mean_error
+
+    alignedB = cloudB.copy()
+    alignedB[:, :2] = cloudB_xy @ R.T + t
+
+    similarity_score = 1.0 / (1e-6 + mean_error)
+    return similarity_score, alignedB, R, t  # less similarity score is better
