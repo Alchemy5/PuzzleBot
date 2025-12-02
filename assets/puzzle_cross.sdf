@@ -2,7 +2,7 @@
   <model name="puzzle_cross_piece">
     <link name="cross_link">
       <inertial>
-        <mass>0.08</mass>
+        <mass>0.001</mass>
         <inertia>
           <ixx>2.0e-04</ixx>
           <iyy>2.0e-04</iyy>
