@@ -7,6 +7,8 @@ from pydrake.all import (
     Solve,
     RigidTransform,
     Rgba,
+    PiecewisePolynomial,
+    TrajectorySource,
 )
 from pydrake.perception import PointCloud
 
@@ -53,48 +55,11 @@ from src.missing_piece_estimation import (
     cloud_similarity,
 )
 
+from src.motion_planning import run_ik, MotionController
+
 
 def _format_vec(vec: tuple[float, float, float]) -> str:
     return f"[{vec[0]:.3f}, {vec[1]:.3f}, {vec[2]:.3f}]"
-
-
-def get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation):
-    # desired gripper pose, hover directly above the cross piece
-    hover_height = 0.20
-    p_WG_des = np.array(cross_translation) + np.array([0.0, 0.0, hover_height])
-
-    R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2)
-    X_WG_des = RigidTransform(R_WG_des, p_WG_des)
-
-    W = plant.world_frame()
-    wsg_model = plant.GetModelInstanceByName("wsg")
-    G = plant.GetBodyByName("body", wsg_model).body_frame()
-
-    ik.AddPositionConstraint(
-        G,  # frameB
-        [0.0, 0.0, 0.0],  # p_BQ
-        W,  # frameA
-        X_WG_des.translation() - 1e-3,  # p_AQ_lower
-        X_WG_des.translation() - 1e-3,  # p_AQ_upper
-    )
-
-    ik.AddOrientationConstraint(
-        W,  # frameAbar
-        R_WG_des,  # R_AbarA
-        G,  # frameBbar
-        RotationMatrix(),  # R_BbarB
-        1e-3,  # theta_bound
-    )
-
-    # small quadratic cost to keep solution well-behaved
-    prog = ik.prog()
-    prog.AddQuadraticErrorCost(np.eye(len(q)), np.zeros(len(q)), q)
-
-    result = Solve(prog)
-    if not result.is_success():
-        raise RuntimeError("ik failed to find a hover configuration")
-
-    return result.GetSolution(q)
 
 
 # Start meshcat for visualization
@@ -302,31 +267,25 @@ builder.ExportOutput(tray_pcd_port, "tray.point_cloud")
 
 plant = station.GetSubsystemByName("plant")
 
-# plant_context = plant.CreateDefaultContext()
-# ik = InverseKinematics(plant, plant_context)
-# q = ik.q()
-# q_initial = get_hardcoded_initial_gripper_pose(plant, plant_context, cross_translation)
-# plant.SetDefaultPositions(q_initial)
-
-# controller = builder.AddSystem(Controller(q_desired=q_initial))
-controller = builder.AddSystem(DepthController(plant))
-
+# controller = builder.AddSystem(DepthController(plant))
+motion_controller = builder.AddSystem(MotionController(output_size=7))
 builder.Connect(
-    station.GetOutputPort("camera_puzzle.depth_image"),
-    controller.depth_port,
+    motion_controller.get_output_port(), station.GetInputPort("iiwa_actuation")
 )
-builder.Connect(
-    station.GetOutputPort("iiwa_generalized_contact_forces"),
-    controller.contact_port,
-)
+
 # builder.Connect(
-#     station.GetOutputPort("iiwa_state"),  # or similar state port
-#     controller.get_input_port(0),
+#    station.GetOutputPort("camera_puzzle.depth_image"),
+#    controller.depth_port,
 # )
-builder.Connect(
-    controller.get_output_port(0),
-    station.GetInputPort("iiwa_actuation"),
-)
+# builder.Connect(
+#    station.GetOutputPort("iiwa_generalized_contact_forces"),
+#    controller.contact_port,
+# )
+
+# builder.Connect(
+#    controller.get_output_port(0),
+#    station.GetInputPort("iiwa_actuation"),
+# )
 
 diagram = builder.Build()
 diagram_context = diagram.CreateDefaultContext()
@@ -342,7 +301,7 @@ puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
     tray_translations=tray_translations,
 )
 
-####### TODO: Move following section to its own separate file ########
+####### Perception and Motion Planning ########
 
 puzzle_points = puzzle_cloud.xyzs().T
 
@@ -400,114 +359,45 @@ meshcat.SetObject(
     rgba=Rgba(0.0, 1.0, 0.0),
 )
 
+scores = {}
 # Compute similarity scores between tray pieces and missing piece
 for piece, pos_pts in tray_piece_tight_clouds.items():
     print(f"######## {piece} and missing piece (cross) similarity score ########")
     score, newB, R, t = cloud_similarity(neg_pts, pos_pts)
     print(f"Score: {score}")
-    print(f"Rotation Matrix: {R}")
-    print(f"Translation: {t}")
-    # Visualize new B pose
-    cloud_translated = PointCloud(new_size=newB.shape[0])
-    cloud_translated.mutable_xyzs()[:] = newB.T
+    scores[piece] = {"score": score, "rotation": R, "translation": t, "cloud": pos_pts}
     if piece == "cross":
+        cloud_translated = PointCloud(new_size=newB.shape[0])
+        cloud_translated.mutable_xyzs()[:] = newB.T
         meshcat.SetObject(
             f"similarity - cross - {piece}",
             cloud_translated,
             point_size=0.01,
             rgba=Rgba(1.0, 0.0, 0.0),  # bright red to stand out
         )
+        print(f"Rotation Matrix: {R}")
+        print(f"Translation: {t}")
+best_piece, best_entry = max(scores.items(), key=lambda item: item[1]["score"])
+cloud = best_entry["cloud"]
+piece_location = cloud.mean(axis=0)
 
+################## Inverse Kinematics to move arm ##################
+# given R and t how to move arm
+plant_context = plant.GetMyContextFromRoot(diagram_context)
 
-import pdb
+iiwa_model = plant.GetModelInstanceByName("iiwa")
+q_init = plant.GetPositions(plant_context, iiwa_model)
 
-pdb.set_trace()
-######################################################################
-print("Puzzle camera cloud has", full_puzzle_cloud.size(), "points")
-print("Tray camera cloud has", full_tray_cloud.size(), "points")
-print("Cropped puzzle cloud has", puzzle_cloud.size(), "points")
-for name, pc in tray_clouds.items():
-    print(f"Tray crop '{name}' has {pc.size()} points")
+q_grasp = run_ik(plant, plant_context, piece_location, q_init)[:7]
+# TODO: create joint space trajectory from initial to q_grasp
 
-station_context = station.GetMyContextFromRoot(diagram_context)
-
-puzzle_color_image = station.GetOutputPort("camera_puzzle.rgb_image").Eval(
-    station_context
+T = 3.0
+q_traj = PiecewisePolynomial.FirstOrderHold(
+    [0.0, T], np.column_stack((q_init, q_grasp))
 )
-puzzle_depth_image = station.GetOutputPort("camera_puzzle.depth_image").Eval(
-    station_context
-)
-tray_color_image = station.GetOutputPort("camera_tray.rgb_image").Eval(station_context)
-tray_depth_image = station.GetOutputPort("camera_tray.depth_image").Eval(
-    station_context
-)
+print
+motion_controller.set_trajectory(q_traj)
 
-meshcat.SetObject(
-    "debug/puzzle/full",
-    full_puzzle_cloud,
-    point_size=0.005,
-    rgba=Rgba(0.0, 0.0, 1.0),
-)
-meshcat.SetObject(
-    "debug/puzzle/cropped",
-    puzzle_cloud,
-    point_size=0.01,
-    rgba=Rgba(1.0, 0.0, 0.0),
-)
-meshcat.SetObject(
-    "debug/tray/full",
-    full_tray_cloud,
-    point_size=0.005,
-    rgba=Rgba(0.7, 0.7, 0.7),
-)
-for name, pc in tray_clouds.items():
-    meshcat.SetObject(
-        f"debug/tray/{name}",
-        pc,
-        point_size=0.01,
-        rgba=Rgba(0.0, 1.0, 0.0),
-    )
-
-
-def _reshape_color_image(image):
-    data = np.array(image.data, copy=False).reshape(image.height(), image.width(), -1)
-    return data[..., :3]
-
-
-def _reshape_depth_image(image):
-    depth = np.array(image.data, copy=False).reshape(image.height(), image.width())
-    return np.ma.masked_invalid(depth)
-
-
-puzzle_color = _reshape_color_image(puzzle_color_image)
-puzzle_depth = _reshape_depth_image(puzzle_depth_image)
-tray_color = _reshape_color_image(tray_color_image)
-tray_depth = _reshape_depth_image(tray_depth_image)
-
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-
-axes[0, 0].imshow(puzzle_color)
-axes[0, 0].set_title("Puzzle camera RGB")
-axes[0, 0].axis("off")
-
-im = axes[0, 1].imshow(puzzle_depth, cmap="magma")
-axes[0, 1].set_title("Puzzle camera depth")
-axes[0, 1].axis("off")
-fig.colorbar(im, ax=axes[0, 1], fraction=0.046, pad=0.04)
-
-axes[1, 0].imshow(tray_color)
-axes[1, 0].set_title("Tray camera RGB")
-axes[1, 0].axis("off")
-
-im = axes[1, 1].imshow(tray_depth, cmap="magma")
-axes[1, 1].set_title("Tray camera depth")
-axes[1, 1].axis("off")
-fig.colorbar(im, ax=axes[1, 1], fraction=0.046, pad=0.04)
-
-plt.tight_layout()
-plt.show()
-
-
-simulator = Simulator(diagram)
+simulator = Simulator(diagram, diagram_context)
 simulator.set_target_realtime_rate(1.0)
-simulator.AdvanceTo(50)
+simulator.AdvanceTo(10)
