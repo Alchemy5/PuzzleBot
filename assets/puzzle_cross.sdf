@@ -13,10 +13,10 @@
         </inertia>
       </inertial>
       <visual name="cross_vertical">
-        <pose>0 0 0.005 0 0 0</pose>
+        <pose>0 0 0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.025 0.14 0.01</size>
+            <size>0.025 0.14 0.02</size>
           </box>
         </geometry>
         <material>
@@ -26,10 +26,10 @@
         </material>
       </visual>
       <visual name="cross_horizontal">
-        <pose>0 0 0.005 0 0 0</pose>
+        <pose>0 0 0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.14 0.025 0.01</size>
+            <size>0.14 0.025 0.02</size>
           </box>
         </geometry>
         <material>
@@ -40,18 +40,18 @@
       </visual>
 
       <collision name="cross_vertical_collision">
-        <pose>0 0 0.005 0 0 0</pose>
+        <pose>0 0 0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.025 0.14 0.01</size>
+            <size>0.025 0.14 0.02</size>
           </box>
         </geometry>
       </collision>
       <collision name="cross_horizontal_collision">
-        <pose>0 0 0.005 0 0 0</pose>
+        <pose>0 0 0.01 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.14 0.025 0.01</size>
+            <size>0.14 0.025 0.02</size>
           </box>
         </geometry>
       </collision>
