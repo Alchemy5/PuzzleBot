@@ -258,6 +258,9 @@ class KeepWsgOpen(LeafSystem):
         self.state_port = self.DeclareVectorInputPort("wsg_state", 4)
         self.DeclareVectorOutputPort("wsg_actuation", 2, self.CalcTau)
 
+    def set_target(self, width):
+        self.target = width / 2.0
+
     def CalcTau(self, context, output):
         x = self.state_port.Eval(context).ravel()
         q_l, q_r, v_l, v_r = x

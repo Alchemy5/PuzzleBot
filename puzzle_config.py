@@ -30,22 +30,14 @@ lower_right_translation = (
     puzzle_center_z,
 )
 
-# cross_translation = (
-#     0.0,
-#     0.68,
-#     table_top_z + 0.01,
-# )
+off_y = 0.2
+off_x = 0.2
 
-cross_translation = (
-    puzzle_center_x + 0.1,
-    puzzle_center_y,
-    table_top_z + 0.07
-)
-
-trapezoid_translation = (-0.15, 0.55, table_top_z)
-infinity_translation = (-0.15, 0.80, table_top_z)
-my_piece_translation = (0.12, 0.52, table_top_z)
-rectangle_translation = (0.07, 0.80, table_top_z)
+trapezoid_translation = (puzzle_center_x + 0.2 + off_x, puzzle_center_y - off_y, table_top_z)
+infinity_translation   = (puzzle_center_x + 0.4 + off_x, puzzle_center_y - off_y, table_top_z)
+my_piece_translation   = (puzzle_center_x + 0.2 + off_x, puzzle_center_y - off_y + 0.3, table_top_z)
+rectangle_translation  = (puzzle_center_x + 0.4 + off_x, puzzle_center_y - off_y + 0.4, table_top_z)
+cross_translation = (puzzle_center_x + 0.2 + off_x, puzzle_center_y - off_y + 0.2, table_top_z)
 
 camera_height = 0.9
 camera_translation = (
@@ -55,8 +47,8 @@ camera_translation = (
 )
 
 tray_camera_translation = (
-    0.10,
-    0.40,
+    puzzle_center_x + 0.5,
+    puzzle_center_y + 0.4,
     puzzle_center_z + camera_height,
 )
 
