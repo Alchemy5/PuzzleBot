@@ -7,29 +7,86 @@ from pydrake.all import (
     ImageDepth32F,
     RotationMatrix
 )
-from puzzle_config import upper_left_translation, upper_right_translation, lower_left_translation, lower_right_translation
+from puzzle_config import upper_left_translation, upper_right_translation, lower_left_translation, lower_right_translation, puzzle_center_x, puzzle_center_y
 
 import numpy as np
 from pydrake.all import LeafSystem, BasicVector, RotationMatrix, JacobianWrtVariable
 
+# def cloud_height_map(cloud, resolution=0.005):
+#     xyz = np.asarray(cloud.xyzs())  # (3, N)
+#     x, y, z = xyz
+#     x_min, x_max = x.min(), x.max()
+#     y_min, y_max = y.min(), y.max()
+
+#     # xs = np.arange(x_min, x_max + resolution, resolution)
+#     # ys = np.arange(y_min, y_max + resolution, resolution)
+#     half_x = max(puzzle_center_x - x_min, x_max - puzzle_center_x)
+#     half_y = max(puzzle_center_y - y_min, y_max - puzzle_center_y)
+#     xs = np.arange(puzzle_center_x - half_x,
+#                    puzzle_center_x + half_x + resolution, resolution)
+#     ys = np.arange(puzzle_center_y - half_y,
+#                    puzzle_center_y + half_y + resolution, resolution)
+#     hmap = np.full((len(ys), len(xs)), np.nan)
+
+#     i = np.floor((x - x_min) / resolution).astype(int)
+#     j = np.floor((y - y_min) / resolution).astype(int)
+#     for u, v, zz in zip(i, j, z):
+#         if np.isnan(hmap[v, u]):
+#             hmap[v, u] = zz
+#         else:
+#             hmap[v, u] = max(hmap[v, u], zz)
+#     return hmap, xs, ys
+# def cloud_height_map(cloud, resolution=0.005):
+#     xyz = np.asarray(cloud.xyzs())
+#     x, y, z = xyz
+#     x_min, x_max = x.min(), x.max()
+#     y_min, y_max = y.min(), y.max()
+
+#     half_x = resolution * np.ceil(max(puzzle_center_x - x_min, x_max - puzzle_center_x) / resolution)
+#     half_y = resolution * np.ceil(max(puzzle_center_y - y_min, y_max - puzzle_center_y) / resolution)
+#     xs = np.arange(puzzle_center_x - half_x, puzzle_center_x + half_x + resolution, resolution)
+#     ys = np.arange(puzzle_center_y - half_y, puzzle_center_y + half_y + resolution, resolution)
+#     hmap = np.full((len(ys), len(xs)), np.nan)
+
+#     i = np.floor((x - xs[0]) / resolution).astype(int)
+#     j = np.floor((y - ys[0]) / resolution).astype(int)
+#     valid = (i >= 0) & (i < len(xs)) & (j >= 0) & (j < len(ys))
+#     for u, v, zz in zip(i[valid], j[valid], z[valid]):
+#         hmap[v, u] = zz if np.isnan(hmap[v, u]) else max(hmap[v, u], zz)
+#     return hmap, xs, ys
+
 def cloud_height_map(cloud, resolution=0.005):
-    xyz = np.asarray(cloud.xyzs())  # (3, N)
+    xyz = np.asarray(cloud.xyzs())
     x, y, z = xyz
     x_min, x_max = x.min(), x.max()
     y_min, y_max = y.min(), y.max()
 
-    xs = np.arange(x_min, x_max + resolution, resolution)
-    ys = np.arange(y_min, y_max + resolution, resolution)
+    # half_x = resolution * np.ceil(max(puzzle_center_x - x_min, x_max - puzzle_center_x) / resolution)
+    # half_y = resolution * np.ceil(max(puzzle_center_y - y_min, y_max - puzzle_center_y) / resolution)
+    # xs = np.arange(puzzle_center_x - half_x, puzzle_center_x + half_x + resolution, resolution)
+    # ys = np.arange(puzzle_center_y - half_y, puzzle_center_y + half_y + resolution, resolution)
+    half_x = resolution * np.ceil(max(puzzle_center_x - x_min, x_max - puzzle_center_x) / resolution)
+    half_y = resolution * np.ceil(max(puzzle_center_y - y_min, y_max - puzzle_center_y) / resolution)
+
+    n_x = int(np.ceil(2 * half_x / resolution))
+    if n_x % 2 == 0:
+        n_x += 1  # force an odd count so the center sample exists
+    n_y = int(np.ceil(2 * half_y / resolution))
+    if n_y % 2 == 0:
+        n_y += 1
+
+    xs = puzzle_center_x + resolution * np.arange(-(n_x // 2), n_x // 2 + 1)
+    ys = puzzle_center_y + resolution * np.arange(-(n_y // 2), n_y // 2 + 1)
+
     hmap = np.full((len(ys), len(xs)), np.nan)
 
-    i = np.floor((x - x_min) / resolution).astype(int)
-    j = np.floor((y - y_min) / resolution).astype(int)
-    for u, v, zz in zip(i, j, z):
-        if np.isnan(hmap[v, u]):
-            hmap[v, u] = zz
-        else:
-            hmap[v, u] = max(hmap[v, u], zz)
+    i = np.floor((x - xs[0]) / resolution).astype(int)
+    j = np.floor((y - ys[0]) / resolution).astype(int)
+    valid = (i >= 0) & (i < len(xs)) & (j >= 0) & (j < len(ys))
+    for u, v, zz in zip(i[valid], j[valid], z[valid]):
+        hmap[v, u] = zz if np.isnan(hmap[v, u]) else max(hmap[v, u], zz)
     return hmap, xs, ys
+
 
 def signed_distance_box(xx, yy, box_min, box_max):
     # box_min, box_max: (x_min, y_min), (x_max, y_max)
@@ -106,6 +163,15 @@ class Controller(LeafSystem):
         # Precompute vector field on the height grid
         hmap, xs, ys = cloud_height_map(cloud, self.resolution)
         hmap = np.where(np.isfinite(hmap), hmap, np.nanmean(hmap))
+
+        kernel = np.ones((3, 3), dtype=hmap.dtype) / 9.0
+        hmap = np.pad(hmap, 1, mode="edge")
+        hmap = (
+            hmap[:-2, :-2] + hmap[:-2, 1:-1] + hmap[:-2, 2:] +
+            hmap[1:-1, :-2] + hmap[1:-1, 1:-1] + hmap[1:-1, 2:] +
+            hmap[2:, :-2] + hmap[2:, 1:-1] + hmap[2:, 2:]
+        ) / 9.0
+
         Gy, Gx = np.gradient(hmap, self.resolution, self.resolution)
 
         xx, yy = np.meshgrid(xs, ys)
@@ -115,8 +181,8 @@ class Controller(LeafSystem):
         dir_x = np.where(phi > 0, -phix, -Gx)
         dir_y = np.where(phi > 0, -phiy, -Gy)
         mag = np.hypot(dir_x, dir_y) + 1e-9
-        self.dir_x = dir_x / mag
-        self.dir_y = dir_y / mag
+        self.dir_x = dir_x # / mag
+        self.dir_y = dir_y # / mag
         self.xs, self.ys = xs, ys
 
     def ComputeTorque(self, context: Context, output: BasicVector) -> None:
@@ -141,12 +207,11 @@ class Controller(LeafSystem):
             self.idx += 1
             q_des = self.qs[self.idx]
         elif (err_norm < 6.169018046688123e-02 and self.idx == len(self.qs) - 1) or self.movement:
-            print("this should never happen")
+            # print("this should never happen")
             X_WG = self.plant.CalcRelativeTransform(
             self.plant_context, self.plant.world_frame(), self.gripper_body.body_frame()
             )
-            #  - np.array([0, 0.033, 0])
-            p_WG = X_WG.translation()
+            p_WG = X_WG.translation() - np.array([0, 0.033, 0])
             V_WG = self.plant.EvalBodySpatialVelocityInWorld(self.plant_context, self.gripper_body)
 
             dxy = self._lookup_dir(p_WG[0], p_WG[1])
@@ -182,7 +247,8 @@ class Controller(LeafSystem):
 
             self.movement = True
 
-            if np.linalg.norm(tau_full[:7]) < 0.01:
+            print("tau is ", np.linalg.norm(f_W[:7]))
+            if np.linalg.norm(f_W[:7]) < 0.01:
                 self.wsg_ctrl.set_target(0.06)
             
             return
@@ -418,6 +484,7 @@ class WsgController(LeafSystem):
     def CalcTau(self, context, output):
         if self.target == 0:
             output.SetFromVector([3.4575, -3.4575])
+            # output.SetFromVector([3.4578, -3.4578])
         else:
             x = self.state_port.Eval(context).ravel()
             q_l, q_r, v_l, v_r = x

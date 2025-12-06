@@ -68,7 +68,7 @@ from src.missing_piece_estimation import (
     largest_region,
     cloud_similarity,
 )
-from controller_visualization_functions import visualize_height_and_gradient, plot_point_cloud
+from controller_visualization_functions import visualize_height_and_gradient, plot_point_cloud, crop_table
 
 
 """
@@ -313,8 +313,8 @@ Run perception functions to get point cloud data.
 full_puzzle_cloud = get_puzzle_pointcloud(diagram, context)
 full_tray_cloud = get_tray_pointcloud(diagram, context)
 
-plot_point_cloud(full_puzzle_cloud)
-visualize_height_and_gradient(full_puzzle_cloud)
+# plot_point_cloud(full_puzzle_cloud)
+# visualize_height_and_gradient(full_puzzle_cloud)
 
 puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
     diagram,
@@ -322,6 +322,9 @@ puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
     puzzle_center=puzzle_center,
     tray_translations=tray_translations,
 )
+
+# plot_point_cloud(puzzle_cloud)
+# visualize_height_and_gradient(puzzle_cloud)
 
 iiwa_ctrl.initialize_field(full_puzzle_cloud)
 
