@@ -295,7 +295,7 @@ class WsgController(LeafSystem):
 
     def CalcTau(self, context, output):
         if self.target == 0:
-            output.SetFromVector([4, -4])
+            output.SetFromVector([3.4575, -3.4575])
         else:
             x = self.state_port.Eval(context).ravel()
             q_l, q_r, v_l, v_r = x
