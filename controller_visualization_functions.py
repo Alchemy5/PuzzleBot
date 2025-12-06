@@ -1,5 +1,4 @@
 # fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-
 # axes[0, 0].imshow(puzzle_color)
 # axes[0, 0].set_title("Puzzle camera RGB")
 # axes[0, 0].axis("off")
@@ -77,6 +76,28 @@
 # import matplotlib.pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
+import numpy as np
+from matplotlib import pyplot as plt
+from puzzle_config import (
+    camera_translation,
+    cross_translation,
+    infinity_translation,
+    lower_left_translation,
+    lower_right_translation,
+    my_piece_translation,
+    puzzle_center,
+    puzzle_center_x,
+    puzzle_center_y,
+    puzzle_center_z,
+    puzzle_offset,
+    rectangle_translation,
+    trapezoid_translation,
+    tray_camera_translation,
+    tray_translations,
+    upper_left_translation,
+    upper_right_translation,
+)
+
 def plot_point_cloud(cloud, title="Puzzle cloud", stride=1, s=1.0):
     """
     cloud: pydrake.geometry.PointCloud
@@ -107,82 +128,82 @@ def plot_point_cloud(cloud, title="Puzzle cloud", stride=1, s=1.0):
 # import numpy as np
 # import matplotlib.pyplot as plt
 
-# def cloud_height_map(cloud, resolution=0.005):
-#     xyz = np.asarray(cloud.xyzs())  # (3, N)
-#     x, y, z = xyz
-#     x_min, x_max = x.min(), x.max()
-#     y_min, y_max = y.min(), y.max()
+def cloud_height_map(cloud, resolution=0.005):
+    xyz = np.asarray(cloud.xyzs())  # (3, N)
+    x, y, z = xyz
+    x_min, x_max = x.min(), x.max()
+    y_min, y_max = y.min(), y.max()
 
-#     xs = np.arange(x_min, x_max + resolution, resolution)
-#     ys = np.arange(y_min, y_max + resolution, resolution)
-#     hmap = np.full((len(ys), len(xs)), np.nan)
+    xs = np.arange(x_min, x_max + resolution, resolution)
+    ys = np.arange(y_min, y_max + resolution, resolution)
+    hmap = np.full((len(ys), len(xs)), np.nan)
 
-#     i = np.floor((x - x_min) / resolution).astype(int)
-#     j = np.floor((y - y_min) / resolution).astype(int)
-#     for u, v, zz in zip(i, j, z):
-#         if np.isnan(hmap[v, u]):
-#             hmap[v, u] = zz
-#         else:
-#             hmap[v, u] = max(hmap[v, u], zz)
-#     return hmap, xs, ys
+    i = np.floor((x - x_min) / resolution).astype(int)
+    j = np.floor((y - y_min) / resolution).astype(int)
+    for u, v, zz in zip(i, j, z):
+        if np.isnan(hmap[v, u]):
+            hmap[v, u] = zz
+        else:
+            hmap[v, u] = max(hmap[v, u], zz)
+    return hmap, xs, ys
 
-# def signed_distance_box(xx, yy, box_min, box_max):
-#     # box_min, box_max: (x_min, y_min), (x_max, y_max)
-#     dx = np.maximum(np.maximum(box_min[0] - xx, 0), xx - box_max[0])
-#     dy = np.maximum(np.maximum(box_min[1] - yy, 0), yy - box_max[1])
-#     outside = (dx > 0) | (dy > 0)
-#     dist_out = np.hypot(dx, dy)
-#     dist_in = -np.minimum(np.minimum(xx - box_min[0], box_max[0] - xx),
-#                           np.minimum(yy - box_min[1], box_max[1] - yy))
-#     return np.where(outside, dist_out, dist_in)
+def signed_distance_box(xx, yy, box_min, box_max):
+    # box_min, box_max: (x_min, y_min), (x_max, y_max)
+    dx = np.maximum(np.maximum(box_min[0] - xx, 0), xx - box_max[0])
+    dy = np.maximum(np.maximum(box_min[1] - yy, 0), yy - box_max[1])
+    outside = (dx > 0) | (dy > 0)
+    dist_out = np.hypot(dx, dy)
+    dist_in = -np.minimum(np.minimum(xx - box_min[0], box_max[0] - xx),
+                          np.minimum(yy - box_min[1], box_max[1] - yy))
+    return np.where(outside, dist_out, dist_in)
 
-# corners = np.array([
-#     upper_left_translation[:2],
-#     upper_right_translation[:2],
-#     lower_left_translation[:2],
-#     lower_right_translation[:2],
-# ])
-# x_min, y_min = corners.min(axis=0)
-# x_max, y_max = corners.max(axis=0)
-# margin = 0.005
+corners = np.array([
+    upper_left_translation[:2],
+    upper_right_translation[:2],
+    lower_left_translation[:2],
+    lower_right_translation[:2],
+])
+x_min, y_min = corners.min(axis=0)
+x_max, y_max = corners.max(axis=0)
+margin = 0.005
 
-# box_min = (x_min - margin, y_min - margin)
-# box_max = (x_max + margin, y_max + margin)
+box_min = (x_min - margin, y_min - margin)
+box_max = (x_max + margin, y_max + margin)
 
-# def visualize_height_and_gradient(cloud, resolution=0.005, step=1,
-#                                   box_min=box_min, box_max=box_max):
-#     hmap, xs, ys = cloud_height_map(cloud, resolution)
-#     if not np.isfinite(hmap).any():
-#         print("Height map is empty"); return
-#     mean_val = np.nanmean(hmap)
-#     hmap = np.where(np.isfinite(hmap), hmap, mean_val)
+def visualize_height_and_gradient(cloud, resolution=0.005, step=1,
+                                  box_min=box_min, box_max=box_max):
+    hmap, xs, ys = cloud_height_map(cloud, resolution)
+    if not np.isfinite(hmap).any():
+        print("Height map is empty"); return
+    mean_val = np.nanmean(hmap)
+    hmap = np.where(np.isfinite(hmap), hmap, mean_val)
 
-#     Gy, Gx = np.gradient(hmap, resolution, resolution)  # d/dy, d/dx
-#     xx, yy = np.meshgrid(xs, ys)
-#     phi = signed_distance_box(xx, yy, box_min, box_max)
-#     phiy, phix = np.gradient(phi, resolution, resolution)
+    Gy, Gx = np.gradient(hmap, resolution, resolution)  # d/dy, d/dx
+    xx, yy = np.meshgrid(xs, ys)
+    phi = signed_distance_box(xx, yy, box_min, box_max)
+    phiy, phix = np.gradient(phi, resolution, resolution)
 
-#     # Choose direction: outside -> inward to box; inside -> downhill height
-#     dir_x = np.where(phi > 0, -phix, -Gx)
-#     dir_y = np.where(phi > 0, -phiy, -Gy)
-#     mag = np.hypot(dir_x, dir_y) + 1e-9
-#     dir_x /= mag; dir_y /= mag
+    # Choose direction: outside -> inward to box; inside -> downhill height
+    dir_x = np.where(phi > 0, -phix, -Gx)
+    dir_y = np.where(phi > 0, -phiy, -Gy)
+    mag = np.hypot(dir_x, dir_y) + 1e-9
+    dir_x /= mag; dir_y /= mag
 
-#     arrow_scale = 0.01
-#     dx_draw, dy_draw = arrow_scale * dir_x, arrow_scale * dir_y
+    arrow_scale = 0.01
+    dx_draw, dy_draw = arrow_scale * dir_x, arrow_scale * dir_y
 
-#     plt.figure(figsize=(8, 6))
-#     plt.imshow(hmap, origin="lower",
-#                extent=[xs[0], xs[-1], ys[0], ys[-1]], cmap="plasma")
-#     plt.colorbar(label="Height (m)")
-#     plt.quiver(xx[::step, ::step], yy[::step, ::step],
-#                dx_draw[::step, ::step], dy_draw[::step, ::step],
-#                color="white", angles="xy", scale_units="xy", scale=1.0,
-#                width=0.002, headwidth=4, headlength=6, headaxislength=5,
-#                pivot="mid")
-#     plt.xlabel("X (m)"); plt.ylabel("Y (m)")
-#     plt.title("Height map with inward/outward push vectors")
-#     plt.tight_layout(); plt.show()
+    plt.figure(figsize=(8, 6))
+    plt.imshow(hmap, origin="lower",
+               extent=[xs[0], xs[-1], ys[0], ys[-1]], cmap="plasma")
+    plt.colorbar(label="Height (m)")
+    plt.quiver(xx[::step, ::step], yy[::step, ::step],
+               dx_draw[::step, ::step], dy_draw[::step, ::step],
+               color="white", angles="xy", scale_units="xy", scale=1.0,
+               width=0.002, headwidth=4, headlength=6, headaxislength=5,
+               pivot="mid")
+    plt.xlabel("X (m)"); plt.ylabel("Y (m)")
+    plt.title("Height map with inward/outward push vectors")
+    plt.tight_layout(); plt.show()
 
 # Example:
 # plot_point_cloud(cropped_cloud)

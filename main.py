@@ -68,6 +68,7 @@ from src.missing_piece_estimation import (
     largest_region,
     cloud_similarity,
 )
+from controller_visualization_functions import visualize_height_and_gradient, plot_point_cloud
 
 
 """
@@ -305,23 +306,24 @@ diagram = builder.Build()
 context = diagram.CreateDefaultContext()
 plant_context = plant.CreateDefaultContext()
 diagram.ForcedPublish(context) 
-# sim = Simulator(diagram, context)
-# plant_context = plant.GetMyMutableContextFromRoot(sim.get_mutable_context())
-# sim.Initialize()
-# sim.set_target_realtime_rate(0.5) 
 
 """
 Run perception functions to get point cloud data.
 """
-# full_puzzle_cloud = get_puzzle_pointcloud(diagram, context)
-# full_tray_cloud = get_tray_pointcloud(diagram, context)
+full_puzzle_cloud = get_puzzle_pointcloud(diagram, context)
+full_tray_cloud = get_tray_pointcloud(diagram, context)
 
-# puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
-#     diagram,
-#     context,
-#     puzzle_center=puzzle_center,
-#     tray_translations=tray_translations,
-# )
+plot_point_cloud(full_puzzle_cloud)
+visualize_height_and_gradient(full_puzzle_cloud)
+
+puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
+    diagram,
+    context,
+    puzzle_center=puzzle_center,
+    tray_translations=tray_translations,
+)
+
+iiwa_ctrl.initialize_field(full_puzzle_cloud)
 
 """
 Run analysis on perception data and compute target pose, etc.
@@ -468,5 +470,5 @@ iiwa_ctrl.set_qs([q_start, q_descend, q_lift])
 
 simulator = Simulator(diagram)
 simulator.set_target_realtime_rate(0.5)
-simulator.AdvanceTo(50)
+simulator.AdvanceTo(70)
 

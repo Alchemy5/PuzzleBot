@@ -86,6 +86,7 @@ class Controller(LeafSystem):
 
         self.wsg = plant.GetModelInstanceByName("wsg")
         self.gripper_body = plant.GetBodyByName("body", self.wsg)
+        self.movement = False
 
     def _lookup_dir(self, x, y):
         i = int(np.clip(round((x - self.xs[0]) / self.resolution), 0, len(self.xs) - 1))
@@ -139,12 +140,14 @@ class Controller(LeafSystem):
                 self.wsg_ctrl.set_target(0)
             self.idx += 1
             q_des = self.qs[self.idx]
-        elif err_norm < 6.169018046688123e-05 and self.idx == len(self.qs) - 1:
+        elif (err_norm < 6.169018046688123e-02 and self.idx == len(self.qs) - 1) or self.movement:
+            print("this should never happen")
             X_WG = self.plant.CalcRelativeTransform(
-            self.context, self.plant.world_frame(), self.gripper_body.body_frame()
+            self.plant_context, self.plant.world_frame(), self.gripper_body.body_frame()
             )
-            p_WG = X_WG.translation() - np.array([0, 0.033, 0])
-            V_WG = self.plant.EvalBodySpatialVelocityInWorld(self.context, self.gripper_body)
+            #  - np.array([0, 0.033, 0])
+            p_WG = X_WG.translation()
+            V_WG = self.plant.EvalBodySpatialVelocityInWorld(self.plant_context, self.gripper_body)
 
             dxy = self._lookup_dir(p_WG[0], p_WG[1])
             p_goal = np.array([
@@ -166,7 +169,7 @@ class Controller(LeafSystem):
             wrench_W = np.hstack((m_W, f_W))
 
             J_WG = self.plant.CalcJacobianSpatialVelocity(
-                self.context,
+                self.plant_context,
                 JacobianWrtVariable.kV,
                 self.gripper_body.body_frame(),
                 [0, 0, 0],
@@ -174,32 +177,36 @@ class Controller(LeafSystem):
                 self.plant.world_frame(),
             )
             tau_full = J_WG.T @ wrench_W
-            tau_full -= self.plant.CalcGravityGeneralizedForces(self.context)
+            tau_full -= self.plant.CalcGravityGeneralizedForces(self.plant_context)
             output.set_value(tau_full[:7])
+
+            self.movement = True
 
             if np.linalg.norm(tau_full[:7]) < 0.01:
                 self.wsg_ctrl.set_target(0.06)
-        else:
-            current_time = context.get_time()
-            dt = current_time - self.prev_time
+            
+            return
+       
+        current_time = context.get_time()
+        dt = current_time - self.prev_time
 
-            # TODO: Compute position and velocity errors (same as PD controller)
-            position_error = q_des - q
-            velocity_error = self.qdot_desired - qdot
+        # TODO: Compute position and velocity errors (same as PD controller)
+        position_error = q_des - q
+        velocity_error = self.qdot_desired - qdot
 
-            # TODO: Update integral error
-            if dt > 0:  # Avoid division by zero on first call
-                self.integral_error += dt * position_error
+        # TODO: Update integral error
+        if dt > 0:  # Avoid division by zero on first call
+            self.integral_error += dt * position_error
 
-            # TODO: Compute PID control law
-            # HINT: Combine all three terms: proportional + derivative + integral
-            torque = self.kp * position_error + self.kd * velocity_error + self.ki * self.integral_error
-            tau_g_full = self.plant.CalcGravityGeneralizedForces(self.plant_context)
+        # TODO: Compute PID control law
+        # HINT: Combine all three terms: proportional + derivative + integral
+        torque = self.kp * position_error + self.kd * velocity_error + self.ki * self.integral_error
+        tau_g_full = self.plant.CalcGravityGeneralizedForces(self.plant_context)
 
-            # Update previous time for next iteration
-            self.prev_time = current_time
+        # Update previous time for next iteration
+        self.prev_time = current_time
 
-            output.set_value(torque - tau_g_full[:7])
+        output.set_value(torque - tau_g_full[:7])
 
 class DepthController(LeafSystem):
     def __init__(self, plant) -> None:
