@@ -8,10 +8,55 @@ from pydrake.all import (
     RotationMatrix
 )
 from puzzle_config import upper_left_translation, upper_right_translation, lower_left_translation, lower_right_translation
+
+import numpy as np
+from pydrake.all import LeafSystem, BasicVector, RotationMatrix, JacobianWrtVariable
+
+def cloud_height_map(cloud, resolution=0.005):
+    xyz = np.asarray(cloud.xyzs())  # (3, N)
+    x, y, z = xyz
+    x_min, x_max = x.min(), x.max()
+    y_min, y_max = y.min(), y.max()
+
+    xs = np.arange(x_min, x_max + resolution, resolution)
+    ys = np.arange(y_min, y_max + resolution, resolution)
+    hmap = np.full((len(ys), len(xs)), np.nan)
+
+    i = np.floor((x - x_min) / resolution).astype(int)
+    j = np.floor((y - y_min) / resolution).astype(int)
+    for u, v, zz in zip(i, j, z):
+        if np.isnan(hmap[v, u]):
+            hmap[v, u] = zz
+        else:
+            hmap[v, u] = max(hmap[v, u], zz)
+    return hmap, xs, ys
+
+def signed_distance_box(xx, yy, box_min, box_max):
+    # box_min, box_max: (x_min, y_min), (x_max, y_max)
+    dx = np.maximum(np.maximum(box_min[0] - xx, 0), xx - box_max[0])
+    dy = np.maximum(np.maximum(box_min[1] - yy, 0), yy - box_max[1])
+    outside = (dx > 0) | (dy > 0)
+    dist_out = np.hypot(dx, dy)
+    dist_in = -np.minimum(np.minimum(xx - box_min[0], box_max[0] - xx),
+                          np.minimum(yy - box_min[1], box_max[1] - yy))
+    return np.where(outside, dist_out, dist_in)
+
+corners = np.array([
+    upper_left_translation[:2],
+    upper_right_translation[:2],
+    lower_left_translation[:2],
+    lower_right_translation[:2],
+])
+x_min, y_min = corners.min(axis=0)
+x_max, y_max = corners.max(axis=0)
+margin = 0.005
+
+box_min = (x_min - margin, y_min - margin)
+box_max = (x_max + margin, y_max + margin)
 class Controller(LeafSystem):
     """PID controller for the IIWA robot"""
 
-    def __init__(self, plant, iiwa) -> None:
+    def __init__(self, plant, iiwa, desired_z=0.12, resolution=0.005, step_gain=0.02) -> None:
         LeafSystem.__init__(self)
 
         self.state_port = self.DeclareVectorInputPort("iiwa_state", 14)
@@ -31,7 +76,21 @@ class Controller(LeafSystem):
         self.prev_time = 0.0
         self.idx = 0
         self.wsg_ctrl = None
-        self.tick_control = [20, ]
+        
+        self.desired_z = desired_z
+        self.step_gain = step_gain
+        self.resolution = resolution
+
+        self.Kp_pos, self.Kd_pos = 200, 20
+        self.Kp_rot, self.Kd_rot = 200, 20
+
+        self.wsg = plant.GetModelInstanceByName("wsg")
+        self.gripper_body = plant.GetBodyByName("body", self.wsg)
+
+    def _lookup_dir(self, x, y):
+        i = int(np.clip(round((x - self.xs[0]) / self.resolution), 0, len(self.xs) - 1))
+        j = int(np.clip(round((y - self.ys[0]) / self.resolution), 0, len(self.ys) - 1))
+        return np.array([self.dir_x[j, i], self.dir_y[j, i]])
     
     def set_q_desired(self, q_desired):
         self.q_desired = q_desired
@@ -41,6 +100,23 @@ class Controller(LeafSystem):
     
     def set_wsg_ctrl(self, wsg_ctrl):
         self.wsg_ctrl = wsg_ctrl
+    
+    def initialize_field(self, cloud):
+        # Precompute vector field on the height grid
+        hmap, xs, ys = cloud_height_map(cloud, self.resolution)
+        hmap = np.where(np.isfinite(hmap), hmap, np.nanmean(hmap))
+        Gy, Gx = np.gradient(hmap, self.resolution, self.resolution)
+
+        xx, yy = np.meshgrid(xs, ys)
+        phi = signed_distance_box(xx, yy, box_min, box_max)
+        phiy, phix = np.gradient(phi, self.resolution, self.resolution)
+
+        dir_x = np.where(phi > 0, -phix, -Gx)
+        dir_y = np.where(phi > 0, -phiy, -Gy)
+        mag = np.hypot(dir_x, dir_y) + 1e-9
+        self.dir_x = dir_x / mag
+        self.dir_y = dir_y / mag
+        self.xs, self.ys = xs, ys
 
     def ComputeTorque(self, context: Context, output: BasicVector) -> None:
         if self.qs is None:
@@ -63,28 +139,67 @@ class Controller(LeafSystem):
                 self.wsg_ctrl.set_target(0)
             self.idx += 1
             q_des = self.qs[self.idx]
-            
+        elif err_norm < 6.169018046688123e-05 and self.idx == len(self.qs) - 1:
+            X_WG = self.plant.CalcRelativeTransform(
+            self.context, self.plant.world_frame(), self.gripper_body.body_frame()
+            )
+            p_WG = X_WG.translation() - np.array([0, 0.033, 0])
+            V_WG = self.plant.EvalBodySpatialVelocityInWorld(self.context, self.gripper_body)
 
-        current_time = context.get_time()
-        dt = current_time - self.prev_time
+            dxy = self._lookup_dir(p_WG[0], p_WG[1])
+            p_goal = np.array([
+                p_WG[0] + self.step_gain * dxy[0],
+                p_WG[1] + self.step_gain * dxy[1],
+                self.desired_z,
+            ])
 
-        # TODO: Compute position and velocity errors (same as PD controller)
-        position_error = q_des - q
-        velocity_error = self.qdot_desired - qdot
+            e_p = p_goal - p_WG
+            v_p = V_WG.translational()
 
-        # TODO: Update integral error
-        if dt > 0:  # Avoid division by zero on first call
-            self.integral_error += dt * position_error
+            R_des = RotationMatrix.MakeXRotation(-np.pi / 2)
+            R_err = R_des.multiply(X_WG.rotation().transpose())
+            aa = R_err.ToAngleAxis()
+            e_R = aa.angle() * aa.axis()
 
-        # TODO: Compute PID control law
-        # HINT: Combine all three terms: proportional + derivative + integral
-        torque = self.kp * position_error + self.kd * velocity_error + self.ki * self.integral_error
-        tau_g_full = self.plant.CalcGravityGeneralizedForces(self.plant_context)
+            f_W = self.Kp_pos * e_p - self.Kd_pos * v_p
+            m_W = self.Kp_rot * e_R - self.Kd_rot * V_WG.rotational()
+            wrench_W = np.hstack((m_W, f_W))
 
-        # Update previous time for next iteration
-        self.prev_time = current_time
+            J_WG = self.plant.CalcJacobianSpatialVelocity(
+                self.context,
+                JacobianWrtVariable.kV,
+                self.gripper_body.body_frame(),
+                [0, 0, 0],
+                self.plant.world_frame(),
+                self.plant.world_frame(),
+            )
+            tau_full = J_WG.T @ wrench_W
+            tau_full -= self.plant.CalcGravityGeneralizedForces(self.context)
+            output.set_value(tau_full[:7])
 
-        output.set_value(torque - tau_g_full[:7])
+            if np.linalg.norm(tau_full[:7]) < 0.01:
+                self.wsg_ctrl.set_target(0.06)
+        else:
+            current_time = context.get_time()
+            dt = current_time - self.prev_time
+
+            # TODO: Compute position and velocity errors (same as PD controller)
+            position_error = q_des - q
+            velocity_error = self.qdot_desired - qdot
+
+            # TODO: Update integral error
+            if dt > 0:  # Avoid division by zero on first call
+                self.integral_error += dt * position_error
+
+            # TODO: Compute PID control law
+            # HINT: Combine all three terms: proportional + derivative + integral
+            torque = self.kp * position_error + self.kd * velocity_error + self.ki * self.integral_error
+            tau_g_full = self.plant.CalcGravityGeneralizedForces(self.plant_context)
+
+            # Update previous time for next iteration
+            self.prev_time = current_time
+
+            output.set_value(torque - tau_g_full[:7])
 
 class DepthController(LeafSystem):
     def __init__(self, plant) -> None:
@@ -303,51 +418,6 @@ class WsgController(LeafSystem):
             tau_l = self.kp * (-qd - q_l) - self.kd * v_l
             tau_r = self.kp * (qd - q_r) - self.kd * v_r
             output.SetFromVector([tau_l, tau_r])
-
-import numpy as np
-from pydrake.all import LeafSystem, BasicVector, RotationMatrix, JacobianWrtVariable
-
-def cloud_height_map(cloud, resolution=0.005):
-    xyz = np.asarray(cloud.xyzs())  # (3, N)
-    x, y, z = xyz
-    x_min, x_max = x.min(), x.max()
-    y_min, y_max = y.min(), y.max()
-
-    xs = np.arange(x_min, x_max + resolution, resolution)
-    ys = np.arange(y_min, y_max + resolution, resolution)
-    hmap = np.full((len(ys), len(xs)), np.nan)
-
-    i = np.floor((x - x_min) / resolution).astype(int)
-    j = np.floor((y - y_min) / resolution).astype(int)
-    for u, v, zz in zip(i, j, z):
-        if np.isnan(hmap[v, u]):
-            hmap[v, u] = zz
-        else:
-            hmap[v, u] = max(hmap[v, u], zz)
-    return hmap, xs, ys
-
-def signed_distance_box(xx, yy, box_min, box_max):
-    # box_min, box_max: (x_min, y_min), (x_max, y_max)
-    dx = np.maximum(np.maximum(box_min[0] - xx, 0), xx - box_max[0])
-    dy = np.maximum(np.maximum(box_min[1] - yy, 0), yy - box_max[1])
-    outside = (dx > 0) | (dy > 0)
-    dist_out = np.hypot(dx, dy)
-    dist_in = -np.minimum(np.minimum(xx - box_min[0], box_max[0] - xx),
-                          np.minimum(yy - box_min[1], box_max[1] - yy))
-    return np.where(outside, dist_out, dist_in)
-
-corners = np.array([
-    upper_left_translation[:2],
-    upper_right_translation[:2],
-    lower_left_translation[:2],
-    lower_right_translation[:2],
-])
-x_min, y_min = corners.min(axis=0)
-x_max, y_max = corners.max(axis=0)
-margin = 0.005
-
-box_min = (x_min - margin, y_min - margin)
-box_max = (x_max + margin, y_max + margin)
 
 class PushAlongPhiController(LeafSystem):
     def __init__(self, plant, desired_z=0.12, resolution=0.005, step_gain=0.02):
