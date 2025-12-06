@@ -1,6 +1,7 @@
 """
 Imports
 """
+
 from manipulation import ConfigureParser
 from pydrake.all import (
     DiagramBuilder,
@@ -21,7 +22,7 @@ from pydrake.all import (
     Role,
     MinimumDistanceLowerBoundConstraint,
     BsplineTrajectory,
-    Sphere
+    Sphere,
 )
 from pydrake.perception import PointCloud
 from manipulation.meshcat_utils import PublishPositionTrajectory
@@ -74,9 +75,13 @@ from src.missing_piece_estimation import (
 Start meshcat and establish directory structure.
 """
 meshcat = StartMeshcat()
+
+
 def _format_vec(vec: tuple[float, float, float]) -> str:
     return f"[{vec[0]:.3f}, {vec[1]:.3f}, {vec[2]:.3f}]"
-repo_root = Path("/Users/jity/Desktop/6.4210/PuzzleBot")
+
+
+repo_root = Path("/Users/varun/robotics_final_project/")
 assets_dir = repo_root / "assets"
 
 """
@@ -304,114 +309,112 @@ builder.Connect(iiwa_ctrl.get_output_port(0), station.GetInputPort("iiwa_actuati
 diagram = builder.Build()
 context = diagram.CreateDefaultContext()
 plant_context = plant.CreateDefaultContext()
-diagram.ForcedPublish(context) 
-# sim = Simulator(diagram, context)
-# plant_context = plant.GetMyMutableContextFromRoot(sim.get_mutable_context())
-# sim.Initialize()
-# sim.set_target_realtime_rate(0.5) 
+diagram.ForcedPublish(context)
 
 """
 Run perception functions to get point cloud data.
 """
-# full_puzzle_cloud = get_puzzle_pointcloud(diagram, context)
-# full_tray_cloud = get_tray_pointcloud(diagram, context)
 
-# puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
-#     diagram,
-#     context,
-#     puzzle_center=puzzle_center,
-#     tray_translations=tray_translations,
-# )
+puzzle_cloud, tray_clouds = get_puzzle_and_tray_pointclouds(
+    diagram,
+    context,
+    puzzle_center=puzzle_center,
+    tray_translations=tray_translations,
+)
 
 """
 Run analysis on perception data and compute target pose, etc.
 """
 
+puzzle_points = puzzle_cloud.xyzs().T
 
-# puzzle_points = puzzle_cloud.xyzs().T
+tray_piece_tight_clouds = {}  # dict to map name of piece to refined positive clouds
+for piece in tray_clouds:
+    cloud = tray_clouds[piece]
+    points = cloud.xyzs().T
+    center1, center2 = find_z_centers(puzzle_points)
 
-# tray_piece_tight_clouds = {}  # dict to map name of piece to refined positive clouds
-# for piece in tray_clouds:
-#     cloud = tray_clouds[piece]
-#     points = cloud.xyzs().T
-#     center1, center2 = find_z_centers(puzzle_points)
+    min_center = min(center1, center2)
+    max_center = max(center1, center2)
 
-#     min_center = min(center1, center2)
-#     max_center = max(center1, center2)
+    # we want max center now
+    positive_space_points = []
+    for point in points:
+        closest_center = find_closest_z_center(point, min_center, max_center)
+        if closest_center == max_center:
+            positive_space_points.append(point)
 
-#     # we want max center now
-#     positive_space_points = []
-#     for point in points:
-#         closest_center = find_closest_z_center(point, min_center, max_center)
-#         if closest_center == max_center:
-#             positive_space_points.append(point)
+    pos = largest_region(positive_space_points)
 
-#     pos = largest_region(positive_space_points)
+    cloud_pos = PointCloud(new_size=pos.shape[0])
+    cloud_pos.mutable_xyzs()[:] = pos.T
+    meshcat.SetObject(
+        piece,
+        cloud_pos,
+        point_size=0.01,
+        rgba=Rgba(0.0, 1.0, 0.0),
+    )
 
-#     cloud_pos = PointCloud(new_size=pos.shape[0])
-#     cloud_pos.mutable_xyzs()[:] = pos.T
-#     meshcat.SetObject(
-#         piece,
-#         cloud_pos,
-#         point_size=0.01,
-#         rgba=Rgba(0.0, 1.0, 0.0),
-#     )
-
-#     tray_piece_tight_clouds[piece] = pos
+    tray_piece_tight_clouds[piece] = pos
 
 
 # Identify negative space
-# center1, center2 = find_z_centers(puzzle_points)
-# min_center = min(center1, center2)  # corresponds to negative space
-# max_center = max(center1, center2)  # corresponds to boundary puzzle pieces
+center1, center2 = find_z_centers(puzzle_points)
+min_center = min(center1, center2)  # corresponds to negative space
+max_center = max(center1, center2)  # corresponds to boundary puzzle pieces
 
-# negative_space_points = []
-# for point in puzzle_points:
-#     closest_center = find_closest_z_center(point, min_center, max_center)
-#     if closest_center == min_center:
-#         negative_space_points.append(point)
+negative_space_points = []
+for point in puzzle_points:
+    closest_center = find_closest_z_center(point, min_center, max_center)
+    if closest_center == min_center:
+        negative_space_points.append(point)
 
 # now choose largest continuous region for these negative space points
 
-# neg_pts = largest_region(negative_space_points)
+neg_pts = largest_region(negative_space_points)
 
-# cloud_neg = PointCloud(new_size=neg_pts.shape[0])
+cloud_neg = PointCloud(new_size=neg_pts.shape[0])
 
-# cloud_neg_avg = neg_pts.mean(axis=0)
-# cloud_neg.mutable_xyzs()[:] = neg_pts.T
-# meshcat.SetObject(
-#     "negative_space",
-#     cloud_neg,
-#     point_size=0.01,
-#     rgba=Rgba(0.0, 1.0, 0.0),
-# )
+cloud_neg_avg = neg_pts.mean(axis=0)
+cloud_neg.mutable_xyzs()[:] = neg_pts.T
+meshcat.SetObject(
+    "negative_space",
+    cloud_neg,
+    point_size=0.01,
+    rgba=Rgba(0.0, 1.0, 0.0),
+)
 
-# scores = {}
-# # Compute similarity scores between tray pieces and missing piece
-# for piece, pos_pts in tray_piece_tight_clouds.items():
-#     print(f"######## {piece} and missing piece (cross) similarity score ########")
-#     score, newB, R, t = cloud_similarity(neg_pts, pos_pts)
-#     print(f"Score: {score}")
-#     scores[piece] = {"score": score, "rotation": R, "translation": t, "cloud": pos_pts}
-#     if piece == "cross":
-#         cloud_translated = PointCloud(new_size=newB.shape[0])
-#         cloud_translated.mutable_xyzs()[:] = newB.T
-#         meshcat.SetObject(
-#             f"similarity - cross - {piece}",
-#             cloud_translated,
-#             point_size=0.01,
-#             rgba=Rgba(1.0, 0.0, 0.0),  # bright red to stand out
-#         )
-#         print(f"Rotation Matrix: {R}")
-#         print(f"Translation: {t}")
-# best_piece, best_entry = max(scores.items(), key=lambda item: item[1]["score"])
-# cloud = best_entry["cloud"]
-# piece_location = cloud.mean(axis=0)
+scores = {}
+# Compute similarity scores between tray pieces and missing piece
+for piece, pos_pts in tray_piece_tight_clouds.items():
+    print(f"######## {piece} and missing piece (cross) similarity score ########")
+    score, newB, R, t = cloud_similarity(neg_pts, pos_pts)
+    print(f"Score: {score}")
+    scores[piece] = {"score": score, "rotation": R, "translation": t, "cloud": pos_pts}
+    if piece == "cross":
+        cloud_translated = PointCloud(new_size=newB.shape[0])
+        cloud_translated.mutable_xyzs()[:] = newB.T
+        meshcat.SetObject(
+            f"similarity - cross - {piece}",
+            cloud_translated,
+            point_size=0.01,
+            rgba=Rgba(1.0, 0.0, 0.0),  # bright red to stand out
+        )
+        print(f"Rotation Matrix: {R}")
+        print(f"Translation: {t}")
+best_piece, best_entry = max(scores.items(), key=lambda item: item[1]["score"])
+cloud = best_entry["cloud"]
+piece_location = cloud.mean(axis=0)
+
+import pdb
+
+pdb.set_trace()
+
 
 def solve_ik(X_WG_target, orientation_tolerance=0.001, pos_tol=0.001):
     """
     Solve IK for a target pose.
-    
+
     Args:
         X_WG_target: Target RigidTransform for gripper in world frame
         context: Plant context
@@ -424,22 +427,28 @@ def solve_ik(X_WG_target, orientation_tolerance=0.001, pos_tol=0.001):
     # Position constraint: point on gripper at target position
     p_W = X_WG_target.translation()
     ik.AddPositionConstraint(
-        gripper_frame, np.array([0, 0.1, 0]),
+        gripper_frame,
+        np.array([0, 0.1, 0]),
         plant.world_frame(),
-        p_W - pos_tol, p_W + pos_tol
+        p_W - pos_tol,
+        p_W + pos_tol,
     )
 
-    R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2)  # flip around X so z points down
+    R_WG_des = RotationMatrix.MakeXRotation(
+        -np.pi / 2
+    )  # flip around X so z points down
     ik.AddOrientationConstraint(
-        gripper_frame, RotationMatrix(),
-        plant.world_frame(), R_WG_des,
-        orientation_tolerance
+        gripper_frame,
+        RotationMatrix(),
+        plant.world_frame(),
+        R_WG_des,
+        orientation_tolerance,
     )
 
     # Use current configuration as initial guess
     q_current = plant.GetPositions(plant_context)
     ik.prog().SetInitialGuess(q, q_current)
-    
+
     result = Solve(ik.prog())
     if not result.is_success():
         print(f"IK failed for target pose {p_W}")
@@ -447,6 +456,7 @@ def solve_ik(X_WG_target, orientation_tolerance=0.001, pos_tol=0.001):
         print(f"Current config: {q_current}")
         raise RuntimeError("IK failed for target pose")
     return result.GetSolution(q)
+
 
 # sim.AdvanceTo(sim.get_context().get_time() + 3)
 q_start = np.array([-1.57, 0.1, 0, -1.2, 0, 1.6, 0])
@@ -469,4 +479,3 @@ iiwa_ctrl.set_qs([q_start, q_descend, q_lift])
 simulator = Simulator(diagram)
 simulator.set_target_realtime_rate(0.5)
 simulator.AdvanceTo(50)
-
