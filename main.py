@@ -464,7 +464,7 @@ X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.04]))
 q_lift = solve_ik(X_WGoal)[:7]
 
 iiwa_ctrl.set_wsg_ctrl(wsg_ctrl)
-iiwa_ctrl.set_qs([q_start, q_hover, q_lift])
+iiwa_ctrl.set_qs([q_start, q_descend, q_lift])
 
 simulator = Simulator(diagram)
 simulator.set_target_realtime_rate(0.5)
