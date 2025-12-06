@@ -460,7 +460,7 @@ X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.02]))
 q_descend = solve_ik(X_WGoal)[:7]
 
 # lift
-X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.04]))
+X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.08]))
 q_lift = solve_ik(X_WGoal)[:7]
 
 iiwa_ctrl.set_wsg_ctrl(wsg_ctrl)

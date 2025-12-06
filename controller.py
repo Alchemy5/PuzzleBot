@@ -57,7 +57,7 @@ class Controller(LeafSystem):
 
         # if we’re close enough, advance to the next waypoint
         err_norm = np.linalg.norm(q_des - q)
-        # print(self.idx, len(self.qs), err_norm)
+        print(self.idx, err_norm)
         if err_norm < 0.01 and self.idx < len(self.qs) - 1:
             if self.idx == 1:
                 self.wsg_ctrl.set_target(0)
@@ -295,7 +295,7 @@ class WsgController(LeafSystem):
 
     def CalcTau(self, context, output):
         if self.target == 0:
-            output.SetFromVector([15, -15])
+            output.SetFromVector([4, -4])
         else:
             x = self.state_port.Eval(context).ravel()
             q_l, q_r, v_l, v_r = x
