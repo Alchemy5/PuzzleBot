@@ -27,6 +27,9 @@ class Controller(LeafSystem):
         self.integral_error = np.zeros(7)
 
         self.prev_time = 0.0
+    
+    def set_q_desired(self, q_desired):
+        self.q_desired = q_desired
 
     def ComputeTorque(self, context: Context, output: BasicVector) -> None:
         # TODO: Extract state information (same as PD controller)
