@@ -11,10 +11,10 @@ from puzzle_config import upper_left_translation, upper_right_translation, lower
 class Controller(LeafSystem):
     """PID controller for the IIWA robot"""
 
-    def __init__(self, q_desired: np.ndarray) -> None:
+    def __init__(self) -> None:
         LeafSystem.__init__(self)
 
-        self.input_port = self.DeclareVectorInputPort("iiwa_state", 14)
+        self.state_port = self.DeclareVectorInputPort("iiwa_state", 14)
         self.output_port = self.DeclareVectorOutputPort(
             "iiwa_torque", 7, self.ComputeTorque
         )
@@ -22,7 +22,7 @@ class Controller(LeafSystem):
         self.kp = 100
         self.kd = 100
         self.ki = 100
-        self.q_desired = q_desired[:7]
+        self.q_desired = np.array([-1.57, 0.1, 0, -1.2, 0, 1.6, 0])
         self.qdot_desired = np.zeros(7)
         self.integral_error = np.zeros(7)
 
@@ -32,8 +32,10 @@ class Controller(LeafSystem):
         self.q_desired = q_desired
 
     def ComputeTorque(self, context: Context, output: BasicVector) -> None:
+        if self.q_desired is None:
+            raise RuntimeError("initialize q_desired first")
         # TODO: Extract state information (same as PD controller)
-        iiwa_state = self.input_port.Eval(context)
+        iiwa_state = self.state_port.Eval(context)
         q = iiwa_state[:7]  # YOUR CODE HERE
         qdot = iiwa_state[7:]  # YOUR CODE HERE
 
@@ -251,7 +253,7 @@ class PushToCenterController(LeafSystem):
 import numpy as np
 from pydrake.all import LeafSystem, BasicVector
 
-class KeepWsgOpen(LeafSystem):
+class WsgController(LeafSystem):
     def __init__(self, target_width=0.06, kp=200.0, kd=20.0):
         super().__init__()
         self.target = target_width / 2.0  # each finger
@@ -268,7 +270,7 @@ class KeepWsgOpen(LeafSystem):
         x = self.state_port.Eval(context).ravel()
         q_l, q_r, v_l, v_r = x
         qd = self.target
-        tau_l = self.kp * (qd - q_l) - self.kd * v_l
+        tau_l = self.kp * (-qd - q_l) - self.kd * v_l
         tau_r = self.kp * (qd - q_r) - self.kd * v_r
         output.SetFromVector([tau_l, tau_r])
 

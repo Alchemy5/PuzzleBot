@@ -34,13 +34,14 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 import trimesh
-from controller import Controller, DepthController, KeepWsgOpen
+from controller import Controller, DepthController, WsgController
 
 from puzzle_pointclouds import (
     get_puzzle_and_tray_pointclouds,
     get_puzzle_pointcloud,
     get_tray_pointcloud,
 )
+import time
 from puzzle_config import (
     camera_translation,
     cross_translation,
@@ -287,14 +288,26 @@ collision_visualizer = MeshcatVisualizer.AddToBuilder(
         prefix="collision", role=Role.kProximity, visible_by_default=False
     ),
 )
-# wsg_ctrl = builder.AddSystem(KeepWsgOpen(target_width=0.01))
-# builder.Connect(station.GetOutputPort("wsg_state"), wsg_ctrl.state_port)
-# builder.Connect(wsg_ctrl.get_output_port(0), station.GetInputPort("wsg_actuation"))
+
+wsg = plant.GetModelInstanceByName("wsg")
+iiwa = plant.GetModelInstanceByName("iiwa")
+gripper_frame = plant.GetFrameByName("body")
+
+wsg_ctrl = builder.AddSystem(WsgController(target_width=0.06))
+builder.Connect(station.GetOutputPort("wsg_state"), wsg_ctrl.state_port)
+builder.Connect(wsg_ctrl.get_output_port(0), station.GetInputPort("wsg_actuation"))
+
+iiwa_ctrl = builder.AddSystem(Controller())
+builder.Connect(station.GetOutputPort("iiwa_state"), iiwa_ctrl.state_port)
+builder.Connect(iiwa_ctrl.get_output_port(0), station.GetInputPort("iiwa_actuation"))
 
 diagram = builder.Build()
 context = diagram.CreateDefaultContext()
 diagram.ForcedPublish(context) 
-plant_context = plant.GetMyContextFromRoot(context)
+sim = Simulator(diagram, context)
+plant_context = plant.GetMyMutableContextFromRoot(sim.get_mutable_context())
+sim.Initialize()
+sim.set_target_realtime_rate(0.5) 
 
 """
 Run perception functions to get point cloud data.
@@ -394,215 +407,64 @@ Run analysis on perception data and compute target pose, etc.
 # cloud = best_entry["cloud"]
 # piece_location = cloud.mean(axis=0)
 
-import numpy as np
-from pydrake.all import InverseKinematics, Solve, PiecewisePolynomial, RotationMatrix
-
-class LinearInterpolationPlanner:
-    def __init__(self, plant, gripper_frame_name="body"):
-        self.plant = plant
-        self.gripper_frame = plant.GetFrameByName(gripper_frame_name)
-
-    def _solve_ik(self, X_WG_target, context, orientation_tolerance=0.001, pos_tol=0.001):
-        """
-        Solve IK for a target pose.
-        
-        Args:
-            X_WG_target: Target RigidTransform for gripper in world frame
-            context: Plant context
-            orientation_tolerance: Tolerance for orientation in radians
-            pos_tol: Tolerance for position in meters (default 1cm)
-        """
-        ik = InverseKinematics(self.plant, context)
-        q = ik.q()
-
-        # Position constraint: point on gripper at target position
-        p_W = X_WG_target.translation()
-        ik.AddPositionConstraint(
-            self.gripper_frame, np.array([0, 0.1, 0]),
-            self.plant.world_frame(),
-            p_W - pos_tol, p_W + pos_tol
-        )
-
-        R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2)  # flip around X so z points down
-        ik.AddOrientationConstraint(
-            self.gripper_frame, RotationMatrix(),
-            self.plant.world_frame(), R_WG_des,
-            orientation_tolerance
-        )
-
-        # Use current configuration as initial guess
-        q_current = self.plant.GetPositions(context)
-        ik.prog().SetInitialGuess(q, q_current)
-        
-        result = Solve(ik.prog())
-        if not result.is_success():
-            print(f"IK failed for target pose {p_W}")
-            print(f"Solver: {result.get_solver_id().name()}")
-            print(f"Current config: {q_current}")
-            raise RuntimeError("IK failed for target pose")
-        return result.GetSolution(q)
+def solve_ik(X_WG_target, orientation_tolerance=0.001, pos_tol=0.001):
+    """
+    Solve IK for a target pose.
     
-    def _solve_start_ik(self, X_WG_target, context, orientation_tolerance=0.001, pos_tol=0.001):
-        """
-        Solve IK for a target pose.
-        
-        Args:
-            X_WG_target: Target RigidTransform for gripper in world frame
-            context: Plant context
-            orientation_tolerance: Tolerance for orientation in radians
-            pos_tol: Tolerance for position in meters (default 1cm)
-        """
-        ik = InverseKinematics(self.plant, context)
-        q = ik.q()
+    Args:
+        X_WG_target: Target RigidTransform for gripper in world frame
+        context: Plant context
+        orientation_tolerance: Tolerance for orientation in radians
+        pos_tol: Tolerance for position in meters (default 1cm)
+    """
+    ik = InverseKinematics(plant, plant_context)
+    q = ik.q()
 
-        # Position constraint: point on gripper at target position
-        p_W = X_WG_target.translation()
-        ik.AddPositionConstraint(
-            self.gripper_frame, np.array([0, 0.1, 0]),
-            self.plant.world_frame(),
-            p_W - pos_tol, p_W + pos_tol
-        )
+    # Position constraint: point on gripper at target position
+    p_W = X_WG_target.translation()
+    ik.AddPositionConstraint(
+        gripper_frame, np.array([0, 0.1, 0]),
+        plant.world_frame(),
+        p_W - pos_tol, p_W + pos_tol
+    )
 
-        # Use current configuration as initial guess
-        q_current = self.plant.GetPositions(context)
-        ik.prog().SetInitialGuess(q, q_current)
-        
-        result = Solve(ik.prog())
-        if not result.is_success():
-            print(f"IK failed for target pose {p_W}")
-            print(f"Solver: {result.get_solver_id().name()}")
-            print(f"Current config: {q_current}")
-            raise RuntimeError("IK failed for target pose")
-        return result.GetSolution(q)
+    R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2)  # flip around X so z points down
+    ik.AddOrientationConstraint(
+        gripper_frame, RotationMatrix(),
+        plant.world_frame(), R_WG_des,
+        orientation_tolerance
+    )
 
-    def plan(self, X_WStart, X_WGoal, context, duration=2.0):
-        """
-        Plan a linear interpolation trajectory between two poses.
-        """
-        print("Solving IK for start pose...")
-        q_start = plant.GetPositions(plant_context)
-        print(f"✓ Start pose solved: {q_start}")
-        
-        print("Solving IK for goal pose...")
-        q_goal = self._solve_ik(X_WGoal, context)
-        print(f"✓ Goal pose solved: {q_goal}")
-        
-        times = [0.0, duration]
-        positions = np.column_stack([q_start, q_goal])
-        return PiecewisePolynomial.FirstOrderHold(times, positions)
+    # Use current configuration as initial guess
+    q_current = plant.GetPositions(plant_context)
+    ik.prog().SetInitialGuess(q, q_current)
+    
+    result = Solve(ik.prog())
+    if not result.is_success():
+        print(f"IK failed for target pose {p_W}")
+        print(f"Solver: {result.get_solver_id().name()}")
+        print(f"Current config: {q_current}")
+        raise RuntimeError("IK failed for target pose")
+    return result.GetSolution(q)
 
-
-sim = Simulator(diagram, context)
-sim.Initialize()
-sim.set_target_realtime_rate(0.5)
-plant_context = plant.GetMyContextFromRoot(sim.get_mutable_context())
-
-wsg = plant.GetModelInstanceByName("wsg")
-iiwa = plant.GetModelInstanceByName("iiwa")
-
-q_wsg = plant.GetPositions(plant_context, wsg)  # [q_l, q_r]
-q_wsg[0] = -0.02
-q_wsg[1] =  0.02
-plant.SetPositions(plant_context, wsg, q_wsg)
-open_wsg = np.array(q_wsg)  # save the open pose
-
-sim.AdvanceTo(sim.get_context().get_time() + 0.5)
-# diagram.ForcedPublish(context)
-# meshcat.Flush()
-print("WSG forced open:", q_wsg)
-
-gripper_frame = plant.GetFrameByName("body")
-X_WStart = plant.CalcRelativeTransform(
-    plant_context, plant.world_frame(), gripper_frame
-)
-X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.04]))
-# Instantiate once
-planner = LinearInterpolationPlanner(plant, gripper_frame_name="body")
-
-# Plan from your poses (using the existing plant_context)
-traj = planner.plan(X_WStart, X_WGoal, plant_context, duration=3.0)
-
-t0 = sim.get_context().get_time()
-dt = 0.01
-t_final = t0 + traj.end_time()
-t = t0
-while t < t_final:
-    tau = traj.start_time() + (t - t0)  # trajectory time
-    q = traj.value(tau).flatten()
-    plant.SetPositions(plant_context, iiwa, q[:7])
-    # keep gripper open during approach (model-instance order-safe)
-    plant.SetPositions(plant_context, wsg, open_wsg)
-    plant.SetVelocities(plant_context, iiwa, np.zeros(7))
-    plant.SetVelocities(plant_context, wsg, np.zeros(2))
-    t = min(t + dt, t_final)
-    sim.AdvanceTo(t)
+# hover
+X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.1]))
+q_goal = solve_ik(X_WGoal)[:7]
+iiwa_ctrl.set_q_desired(q_goal)
+sim.AdvanceTo(sim.get_context().get_time() + 1)
 
 # descend
-X_WStart = plant.CalcRelativeTransform(
-    plant_context, plant.world_frame(), gripper_frame
-)
-X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.02]))
-traj = planner.plan(X_WStart, X_WGoal, plant_context, duration=3.0)
-t0 = sim.get_context().get_time()
-dt = 0.01
-t_final = t0 + traj.end_time()
-t = t0
-while t < t_final:
-    tau = traj.start_time() + (t - t0)  # trajectory time
-    q = traj.value(tau).flatten()
-    plant.SetPositions(plant_context, iiwa, q[:7])
-    # keep gripper open during approach (model-instance order-safe)
-    plant.SetPositions(plant_context, wsg, open_wsg)
-    plant.SetVelocities(plant_context, iiwa, np.zeros(7))
-    plant.SetVelocities(plant_context, wsg, np.zeros(2))
-    t = min(t + dt, t_final)
-    sim.AdvanceTo(t)
+# X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.02]))
+# q_goal = solve_ik(X_WGoal)[:7]
+# iiwa_ctrl.set_q_desired(q_goal)
+# sim.AdvanceTo(sim.get_context().get_time() + 1)
 
-q_wsg = plant.GetPositions(plant_context, wsg)  # [q_l, q_r]
-q_wsg[0] = -0.009 # -0.01 - 0.00001 / 2
-q_wsg[1] =  0 # 0.01 + 0.00001 / 2
-closed_wsg = np.array(q_wsg)
-q_hold = plant.GetPositions(plant_context, iiwa)
-# plant.SetPositions(plant_context, wsg, q_wsg)
-t0 = sim.get_context().get_time()
-t_final = t0 + 0.5
-t = t0
-while t < t_final:
-    alpha = (t - t0) / (t_final - t0)
-    q_wsg = open_wsg * (1 - alpha) + closed_wsg * alpha
-    plant.SetPositions(plant_context, iiwa, q_hold)
-    plant.SetPositions(plant_context, wsg, q_wsg)
-    plant.SetVelocities(plant_context, iiwa, np.zeros(7))
-    plant.SetVelocities(plant_context, wsg, np.zeros(2))
-    sim.AdvanceTo(min(t + dt, t_final))
-    t = sim.get_context().get_time()
+# close gripper
+wsg_ctrl.set_target(0.001)
+sim.AdvanceTo(sim.get_context().get_time() + 1)
 
-# diagram.ForcedPublish(context)
-# meshcat.Flush()
-print("WSG forced closed:", q_wsg)
-
-X_WStart = plant.CalcRelativeTransform(
-    plant_context, plant.world_frame(), gripper_frame
-)
-X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.06]))
-
-# Plan from your poses (using the existing plant_context)
-traj = planner.plan(X_WStart, X_WGoal, plant_context, duration=3.0)
-
-t0 = sim.get_context().get_time()
-dt = 0.01
-t_final = t0 + traj.end_time()
-t = t0
-while t < t_final:
-    tau = traj.start_time() + (t - t0)
-    q = traj.value(tau).flatten()
-    plant.SetPositions(plant_context, iiwa, q[:7])
-    # keep gripper closed during lift
-    plant.SetPositions(plant_context, wsg, closed_wsg)
-    plant.SetVelocities(plant_context, iiwa, np.zeros(7))
-    plant.SetVelocities(plant_context, wsg, np.zeros(2))
-    t = min(t + dt, t_final)
-    sim.AdvanceTo(t)
-
-# Play it in MeshCat
-# PublishPositionTrajectory(traj, context, plant, visualizer)
+# lift
+# X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.06]))
+# q_goal = solve_ik(X_WGoal)[:7]
+# iiwa_ctrl.set_q_desired(q_goal)
+# sim.AdvanceTo(sim.get_context().get_time() + 5)
