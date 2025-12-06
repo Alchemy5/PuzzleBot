@@ -34,7 +34,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 import trimesh
-from controller import Controller, DepthController, WsgController
+from controller import Controller, DepthController, WsgController, WaypointPDController
 
 from puzzle_pointclouds import (
     get_puzzle_and_tray_pointclouds,
@@ -297,17 +297,18 @@ wsg_ctrl = builder.AddSystem(WsgController(target_width=0.06))
 builder.Connect(station.GetOutputPort("wsg_state"), wsg_ctrl.state_port)
 builder.Connect(wsg_ctrl.get_output_port(0), station.GetInputPort("wsg_actuation"))
 
-iiwa_ctrl = builder.AddSystem(Controller())
+iiwa_ctrl = builder.AddSystem(Controller(plant, iiwa))
 builder.Connect(station.GetOutputPort("iiwa_state"), iiwa_ctrl.state_port)
 builder.Connect(iiwa_ctrl.get_output_port(0), station.GetInputPort("iiwa_actuation"))
 
 diagram = builder.Build()
 context = diagram.CreateDefaultContext()
+plant_context = plant.CreateDefaultContext()
 diagram.ForcedPublish(context) 
-sim = Simulator(diagram, context)
-plant_context = plant.GetMyMutableContextFromRoot(sim.get_mutable_context())
-sim.Initialize()
-sim.set_target_realtime_rate(0.5) 
+# sim = Simulator(diagram, context)
+# plant_context = plant.GetMyMutableContextFromRoot(sim.get_mutable_context())
+# sim.Initialize()
+# sim.set_target_realtime_rate(0.5) 
 
 """
 Run perception functions to get point cloud data.
@@ -447,24 +448,25 @@ def solve_ik(X_WG_target, orientation_tolerance=0.001, pos_tol=0.001):
         raise RuntimeError("IK failed for target pose")
     return result.GetSolution(q)
 
+# sim.AdvanceTo(sim.get_context().get_time() + 3)
+q_start = np.array([-1.57, 0.1, 0, -1.2, 0, 1.6, 0])
+
 # hover
-X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.1]))
-q_goal = solve_ik(X_WGoal)[:7]
-iiwa_ctrl.set_q_desired(q_goal)
-sim.AdvanceTo(sim.get_context().get_time() + 1)
+X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.04]))
+q_hover = solve_ik(X_WGoal)[:7]
 
 # descend
-# X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.02]))
-# q_goal = solve_ik(X_WGoal)[:7]
-# iiwa_ctrl.set_q_desired(q_goal)
-# sim.AdvanceTo(sim.get_context().get_time() + 1)
-
-# close gripper
-wsg_ctrl.set_target(0.001)
-sim.AdvanceTo(sim.get_context().get_time() + 1)
+X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.02]))
+q_descend = solve_ik(X_WGoal)[:7]
 
 # lift
-# X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.06]))
-# q_goal = solve_ik(X_WGoal)[:7]
-# iiwa_ctrl.set_q_desired(q_goal)
-# sim.AdvanceTo(sim.get_context().get_time() + 5)
+X_WGoal = RigidTransform(cross_translation + np.array([0, 0.033, 0.04]))
+q_lift = solve_ik(X_WGoal)[:7]
+
+iiwa_ctrl.set_wsg_ctrl(wsg_ctrl)
+iiwa_ctrl.set_qs([q_start, q_hover, q_lift])
+
+simulator = Simulator(diagram)
+simulator.set_target_realtime_rate(0.5)
+simulator.AdvanceTo(50)
+

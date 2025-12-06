@@ -11,39 +11,65 @@ from puzzle_config import upper_left_translation, upper_right_translation, lower
 class Controller(LeafSystem):
     """PID controller for the IIWA robot"""
 
-    def __init__(self) -> None:
+    def __init__(self, plant, iiwa) -> None:
         LeafSystem.__init__(self)
 
         self.state_port = self.DeclareVectorInputPort("iiwa_state", 14)
         self.output_port = self.DeclareVectorOutputPort(
             "iiwa_torque", 7, self.ComputeTorque
         )
-
-        self.kp = 100
-        self.kd = 100
+        self.plant = plant
+        self.plant_context = plant.CreateDefaultContext()
+        self.kp = 300
+        self.kd = 200
         self.ki = 100
         self.q_desired = np.array([-1.57, 0.1, 0, -1.2, 0, 1.6, 0])
         self.qdot_desired = np.zeros(7)
         self.integral_error = np.zeros(7)
-
+        self.iiwa = iiwa
+        self.qs = None
         self.prev_time = 0.0
+        self.idx = 0
+        self.wsg_ctrl = None
+        self.tick_control = [20, ]
     
     def set_q_desired(self, q_desired):
         self.q_desired = q_desired
+    
+    def set_qs(self, qs):
+        self.qs = qs
+    
+    def set_wsg_ctrl(self, wsg_ctrl):
+        self.wsg_ctrl = wsg_ctrl
 
     def ComputeTorque(self, context: Context, output: BasicVector) -> None:
-        if self.q_desired is None:
-            raise RuntimeError("initialize q_desired first")
+        if self.qs is None:
+            raise RuntimeError("initialize qs first")
         # TODO: Extract state information (same as PD controller)
         iiwa_state = self.state_port.Eval(context)
         q = iiwa_state[:7]  # YOUR CODE HERE
         qdot = iiwa_state[7:]  # YOUR CODE HERE
 
+        self.plant.SetPositions(self.plant_context, self.iiwa, q)
+        self.plant.SetVelocities(self.plant_context, self.iiwa, qdot)
+
+        q_des = self.qs[self.idx]
+
+        # if we’re close enough, advance to the next waypoint
+        err_norm = np.linalg.norm(q_des - q)
+        # print(self.idx, len(self.qs), err_norm)
+        if err_norm < 0.01 and self.idx < len(self.qs) - 1:
+            if self.idx == 1:
+                self.wsg_ctrl.set_target(0)
+            self.idx += 1
+            q_des = self.qs[self.idx]
+            
+
         current_time = context.get_time()
         dt = current_time - self.prev_time
 
         # TODO: Compute position and velocity errors (same as PD controller)
-        position_error = self.q_desired - q
+        position_error = q_des - q
         velocity_error = self.qdot_desired - qdot
 
         # TODO: Update integral error
@@ -53,11 +79,12 @@ class Controller(LeafSystem):
         # TODO: Compute PID control law
         # HINT: Combine all three terms: proportional + derivative + integral
         torque = self.kp * position_error + self.kd * velocity_error + self.ki * self.integral_error
+        tau_g_full = self.plant.CalcGravityGeneralizedForces(self.plant_context)
 
         # Update previous time for next iteration
         self.prev_time = current_time
 
-        output.set_value(torque)
+        output.set_value(torque - tau_g_full[:7])
 
 class DepthController(LeafSystem):
     def __init__(self, plant) -> None:
@@ -254,7 +281,7 @@ import numpy as np
 from pydrake.all import LeafSystem, BasicVector
 
 class WsgController(LeafSystem):
-    def __init__(self, target_width=0.06, kp=200.0, kd=20.0):
+    def __init__(self, target_width=0.06, kp=400.0, kd=50.0):
         super().__init__()
         self.target = target_width / 2.0  # each finger
         self.kp = kp
@@ -267,12 +294,15 @@ class WsgController(LeafSystem):
         self.target = width / 2.0
 
     def CalcTau(self, context, output):
-        x = self.state_port.Eval(context).ravel()
-        q_l, q_r, v_l, v_r = x
-        qd = self.target
-        tau_l = self.kp * (-qd - q_l) - self.kd * v_l
-        tau_r = self.kp * (qd - q_r) - self.kd * v_r
-        output.SetFromVector([tau_l, tau_r])
+        if self.target == 0:
+            output.SetFromVector([15, -15])
+        else:
+            x = self.state_port.Eval(context).ravel()
+            q_l, q_r, v_l, v_r = x
+            qd = self.target
+            tau_l = self.kp * (-qd - q_l) - self.kd * v_l
+            tau_r = self.kp * (qd - q_r) - self.kd * v_r
+            output.SetFromVector([tau_l, tau_r])
 
 import numpy as np
 from pydrake.all import LeafSystem, BasicVector, RotationMatrix, JacobianWrtVariable
