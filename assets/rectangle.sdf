@@ -16,7 +16,7 @@
         <geometry>
           <mesh>
             <uri>rectangle.obj</uri>
-            <scale>1 1 2</scale>
+            <scale>0.8 0.8 1.6</scale>
           </mesh>
         </geometry>
                 <material>
@@ -30,7 +30,7 @@
         <geometry>
           <mesh>
             <uri>rectangle.obj</uri>
-            <scale>1 1 2</scale>
+            <scale>0.8 0.8 1.6</scale>
           </mesh>
         </geometry>
       </collision>

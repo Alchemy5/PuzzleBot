@@ -100,7 +100,9 @@ def crop_aabb(pc: PointCloud, lower, upper) -> PointCloud:
     return out
 
 
-def _filter_by_assignment(pc: PointCloud, piece_index: int, translations_xy: np.ndarray) -> PointCloud:
+def _filter_by_assignment(
+    pc: PointCloud, piece_index: int, translations_xy: np.ndarray
+) -> PointCloud:
     """Keeps only the points whose nearest tray translation matches the piece."""
     xyz = np.asarray(pc.xyzs())
     if xyz.size == 0:
@@ -184,12 +186,14 @@ def _geometry_vertices(sdf_path: Path, geometry: ET.Element) -> np.ndarray:
         size_text = box_elem.findtext("size")
         if size_text:
             size = np.array([float(v) for v in size_text.strip().split()], dtype=float)
-            offsets = np.array([
-                [sx, sy, sz]
-                for sx in (-0.5 * size[0], 0.5 * size[0])
-                for sy in (-0.5 * size[1], 0.5 * size[1])
-                for sz in (-0.5 * size[2], 0.5 * size[2])
-            ])
+            offsets = np.array(
+                [
+                    [sx, sy, sz]
+                    for sx in (-0.5 * size[0], 0.5 * size[0])
+                    for sy in (-0.5 * size[1], 0.5 * size[1])
+                    for sz in (-0.5 * size[2], 0.5 * size[2])
+                ]
+            )
             return offsets
     return np.empty((0, 3))
 
@@ -208,7 +212,9 @@ def _get_tray_model_bounds(name: str) -> Tuple[np.ndarray, np.ndarray]:
     upper = np.array([-np.inf, -np.inf, -np.inf], dtype=float)
 
     for collision in root.findall(".//collision"):
-        collision_translation, collision_rotation = _parse_pose(collision.findtext("pose"))
+        collision_translation, collision_rotation = _parse_pose(
+            collision.findtext("pose")
+        )
         geometry = collision.find("geometry")
         if geometry is None:
             continue
@@ -230,12 +236,16 @@ def _get_tray_model_bounds(name: str) -> Tuple[np.ndarray, np.ndarray]:
         upper = np.maximum(upper, transformed.max(axis=0))
 
     if not np.all(np.isfinite(lower)):
-        raise ValueError(f"Unable to compute bounds for tray piece '{name}' from {sdf_path}")
+        raise ValueError(
+            f"Unable to compute bounds for tray piece '{name}' from {sdf_path}"
+        )
 
     return lower, upper
 
 
-def _aabb_intersects(lower_a: np.ndarray, upper_a: np.ndarray, lower_b: np.ndarray, upper_b: np.ndarray) -> bool:
+def _aabb_intersects(
+    lower_a: np.ndarray, upper_a: np.ndarray, lower_b: np.ndarray, upper_b: np.ndarray
+) -> bool:
     return bool(np.all(upper_a >= lower_b) and np.all(upper_b >= lower_a))
 
 
@@ -314,8 +324,14 @@ def _filter_by_components(
 def get_puzzle_pointcloud(diagram: Diagram, context: Context) -> PointCloud:
     return diagram.GetOutputPort("puzzle.point_cloud").Eval(context)
 
+
+def get_full_puzzle_pointcloud(diagram: Diagram, context: Context) -> PointCloud:
+    return diagram.GetOutputPort("puzzle.full_point_cloud").Eval(context)
+
+
 def get_tray_pointcloud(diagram: Diagram, context: Context) -> PointCloud:
     return diagram.GetOutputPort("tray.point_cloud").Eval(context)
+
 
 def get_puzzle_and_tray_pointclouds(
     diagram: Diagram,
@@ -348,7 +364,9 @@ def get_puzzle_and_tray_pointclouds(
 
     tray_pc_for_cropping = tray_pc_full
     if clearance is not None:
-        tray_pc_filtered_full = _filter_points_above(tray_pc_full, table_top_z, clearance)
+        tray_pc_filtered_full = _filter_points_above(
+            tray_pc_full, table_top_z, clearance
+        )
         print_pointcloud_bounds(tray_pc_filtered_full, "tray_full_filtered_cloud")
         tray_pc_for_cropping = tray_pc_filtered_full
 
@@ -372,7 +390,9 @@ def get_puzzle_and_tray_pointclouds(
             expected_upper = expected_upper + upper_pad
 
         expected_lower[2] = min(expected_lower[2], table_top_z - TRAY_CROP_MARGIN_Z)
-        expected_upper[2] = max(expected_upper[2], table_top_z + local_upper[2] + TRAY_CROP_MARGIN_Z)
+        expected_upper[2] = max(
+            expected_upper[2], table_top_z + local_upper[2] + TRAY_CROP_MARGIN_Z
+        )
         expected_bounds[name] = (expected_lower, expected_upper)
 
     tray_xyz_filtered = np.asarray(tray_pc_for_cropping.xyzs())
@@ -393,16 +413,20 @@ def get_puzzle_and_tray_pointclouds(
             continue
         indices = np.where(mask)[0]
         pts = tray_xyz_filtered[:, indices]
-        lower_base = np.array([
-            pts[0].min(),
-            pts[1].min(),
-            min(pts[2].min(), table_top_z),
-        ])
-        upper_base = np.array([
-            pts[0].max(),
-            pts[1].max(),
-            pts[2].max(),
-        ])
+        lower_base = np.array(
+            [
+                pts[0].min(),
+                pts[1].min(),
+                min(pts[2].min(), table_top_z),
+            ]
+        )
+        upper_base = np.array(
+            [
+                pts[0].max(),
+                pts[1].max(),
+                pts[2].max(),
+            ]
+        )
         components[component_label] = {
             "indices": indices,
             "lower_base": lower_base,
@@ -429,27 +453,39 @@ def get_puzzle_and_tray_pointclouds(
 
         subset_xyz = None
         if component_labels:
-            index_groups = [components[label]["indices"] for label in component_labels if label in components]
+            index_groups = [
+                components[label]["indices"]
+                for label in component_labels
+                if label in components
+            ]
             if index_groups:
                 indices = np.concatenate(index_groups)
                 if indices.size:
                     subset_xyz = tray_xyz_filtered[:, indices]
 
         if subset_xyz is not None and subset_xyz.size:
-            observed_lower = np.array([
-                subset_xyz[0].min() - TRAY_CROP_MARGIN_XY,
-                subset_xyz[1].min() - TRAY_CROP_MARGIN_XY,
-                min(subset_xyz[2].min(), table_top_z) - TRAY_CROP_MARGIN_Z,
-            ])
-            observed_upper = np.array([
-                subset_xyz[0].max() + TRAY_CROP_MARGIN_XY,
-                subset_xyz[1].max() + TRAY_CROP_MARGIN_XY,
-                subset_xyz[2].max() + TRAY_CROP_MARGIN_Z,
-            ])
+            observed_lower = np.array(
+                [
+                    subset_xyz[0].min() - TRAY_CROP_MARGIN_XY,
+                    subset_xyz[1].min() - TRAY_CROP_MARGIN_XY,
+                    min(subset_xyz[2].min(), table_top_z) - TRAY_CROP_MARGIN_Z,
+                ]
+            )
+            observed_upper = np.array(
+                [
+                    subset_xyz[0].max() + TRAY_CROP_MARGIN_XY,
+                    subset_xyz[1].max() + TRAY_CROP_MARGIN_XY,
+                    subset_xyz[2].max() + TRAY_CROP_MARGIN_Z,
+                ]
+            )
             lower = np.minimum(lower, observed_lower)
             upper = np.maximum(upper, observed_upper)
         else:
-            xyz_source = tray_xyz_filtered if tray_xyz_filtered.size else np.asarray(tray_pc_full.xyzs())
+            xyz_source = (
+                tray_xyz_filtered
+                if tray_xyz_filtered.size
+                else np.asarray(tray_pc_full.xyzs())
+            )
             if xyz_source.size:
                 delta = xyz_source[:2] - translation[:2].reshape(2, 1)
                 distances = np.linalg.norm(delta, axis=0)
@@ -461,16 +497,20 @@ def get_puzzle_and_tray_pointclouds(
                     mask[nearest_indices] = True
 
                 subset_xyz = xyz_source[:, mask]
-                observed_lower = np.array([
-                    subset_xyz[0].min() - TRAY_CROP_MARGIN_XY,
-                    subset_xyz[1].min() - TRAY_CROP_MARGIN_XY,
-                    min(subset_xyz[2].min(), table_top_z) - TRAY_CROP_MARGIN_Z,
-                ])
-                observed_upper = np.array([
-                    subset_xyz[0].max() + TRAY_CROP_MARGIN_XY,
-                    subset_xyz[1].max() + TRAY_CROP_MARGIN_XY,
-                    subset_xyz[2].max() + TRAY_CROP_MARGIN_Z,
-                ])
+                observed_lower = np.array(
+                    [
+                        subset_xyz[0].min() - TRAY_CROP_MARGIN_XY,
+                        subset_xyz[1].min() - TRAY_CROP_MARGIN_XY,
+                        min(subset_xyz[2].min(), table_top_z) - TRAY_CROP_MARGIN_Z,
+                    ]
+                )
+                observed_upper = np.array(
+                    [
+                        subset_xyz[0].max() + TRAY_CROP_MARGIN_XY,
+                        subset_xyz[1].max() + TRAY_CROP_MARGIN_XY,
+                        subset_xyz[2].max() + TRAY_CROP_MARGIN_Z,
+                    ]
+                )
                 lower = np.minimum(lower, observed_lower)
                 upper = np.maximum(upper, observed_upper)
             else:
@@ -500,6 +540,7 @@ def get_puzzle_and_tray_pointclouds(
         crop_piece(name)
 
     return puzzle_cloud, tray_clouds
+
 
 def print_pointcloud_bounds(pc: PointCloud, name: str = "cloud") -> None:
     xyz = np.asarray(pc.xyzs())

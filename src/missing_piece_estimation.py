@@ -23,7 +23,13 @@ def find_closest_z_center(point, center1, center2):
 
 
 def largest_region(points, radius=0.01):
+    if len(points) == 0:
+        return np.empty((0, 3))  # or return None
+
     pts = np.asarray(points)
+
+    if pts.ndim == 1:
+        pts = pts.reshape(-1, 1)  # or (-1, 1) if you expect 1D values
 
     # eps = radius, min_samples=1 ensures every point belongs to some cluster
     labels = DBSCAN(eps=radius, min_samples=1).fit_predict(pts)
