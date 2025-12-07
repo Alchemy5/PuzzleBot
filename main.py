@@ -1,6 +1,7 @@
 """
 Imports
 """
+
 from manipulation import ConfigureParser
 from pydrake.all import (
     DiagramBuilder,
@@ -21,7 +22,7 @@ from pydrake.all import (
     Role,
     MinimumDistanceLowerBoundConstraint,
     BsplineTrajectory,
-    Sphere
+    Sphere,
 )
 from pydrake.perception import PointCloud
 from manipulation.meshcat_utils import PublishPositionTrajectory
@@ -34,7 +35,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib import pyplot as plt
 import trimesh
-from controller import Controller, DepthController, WsgController, WaypointPDController
+from controller import Controller, WsgController
 
 from puzzle_pointclouds import (
     get_puzzle_and_tray_pointclouds,
@@ -68,16 +69,25 @@ from src.missing_piece_estimation import (
     largest_region,
     cloud_similarity,
 )
-from controller_visualization_functions import visualize_height_and_gradient, plot_point_cloud, crop_table
+from controller_visualization_functions import (
+    visualize_height_and_gradient,
+    plot_point_cloud,
+    crop_table,
+)
 
 
 """
 Start meshcat and establish directory structure.
 """
 meshcat = StartMeshcat()
+
+
 def _format_vec(vec: tuple[float, float, float]) -> str:
     return f"[{vec[0]:.3f}, {vec[1]:.3f}, {vec[2]:.3f}]"
-repo_root = Path("/Users/jity/Desktop/6.4210/PuzzleBot")
+
+
+repo_root = Path("/Users/varun/robotics_final_project")
+
 assets_dir = repo_root / "assets"
 
 """
@@ -305,7 +315,7 @@ builder.Connect(iiwa_ctrl.get_output_port(0), station.GetInputPort("iiwa_actuati
 diagram = builder.Build()
 context = diagram.CreateDefaultContext()
 plant_context = plant.CreateDefaultContext()
-diagram.ForcedPublish(context) 
+diagram.ForcedPublish(context)
 
 """
 Run perception functions to get point cloud data.
@@ -413,10 +423,11 @@ Run analysis on perception data and compute target pose, etc.
 # cloud = best_entry["cloud"]
 # piece_location = cloud.mean(axis=0)
 
+
 def solve_ik(X_WG_target, orientation_tolerance=0.001, pos_tol=0.001):
     """
     Solve IK for a target pose.
-    
+
     Args:
         X_WG_target: Target RigidTransform for gripper in world frame
         context: Plant context
@@ -429,22 +440,28 @@ def solve_ik(X_WG_target, orientation_tolerance=0.001, pos_tol=0.001):
     # Position constraint: point on gripper at target position
     p_W = X_WG_target.translation()
     ik.AddPositionConstraint(
-        gripper_frame, np.array([0, 0.1, 0]),
+        gripper_frame,
+        np.array([0, 0.1, 0]),
         plant.world_frame(),
-        p_W - pos_tol, p_W + pos_tol
+        p_W - pos_tol,
+        p_W + pos_tol,
     )
 
-    R_WG_des = RotationMatrix.MakeXRotation(-np.pi / 2)  # flip around X so z points down
+    R_WG_des = RotationMatrix.MakeXRotation(
+        -np.pi / 2
+    )  # flip around X so z points down
     ik.AddOrientationConstraint(
-        gripper_frame, RotationMatrix(),
-        plant.world_frame(), R_WG_des,
-        orientation_tolerance
+        gripper_frame,
+        RotationMatrix(),
+        plant.world_frame(),
+        R_WG_des,
+        orientation_tolerance,
     )
 
     # Use current configuration as initial guess
     q_current = plant.GetPositions(plant_context)
     ik.prog().SetInitialGuess(q, q_current)
-    
+
     result = Solve(ik.prog())
     if not result.is_success():
         print(f"IK failed for target pose {p_W}")
@@ -452,6 +469,7 @@ def solve_ik(X_WG_target, orientation_tolerance=0.001, pos_tol=0.001):
         print(f"Current config: {q_current}")
         raise RuntimeError("IK failed for target pose")
     return result.GetSolution(q)
+
 
 # sim.AdvanceTo(sim.get_context().get_time() + 3)
 q_start = np.array([-1.57, 0.1, 0, -1.2, 0, 1.6, 0])
@@ -474,4 +492,3 @@ iiwa_ctrl.set_qs([q_start, q_descend, q_lift])
 simulator = Simulator(diagram)
 simulator.set_target_realtime_rate(0.5)
 simulator.AdvanceTo(70)
-
