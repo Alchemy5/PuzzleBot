@@ -69,7 +69,7 @@ camera_translation = (
 full_camera_translation = (
     puzzle_center_x,
     puzzle_center_y,
-    puzzle_center_z + camera_height,
+    puzzle_center_z + 0.4,
 )
 
 tray_camera_translation = (

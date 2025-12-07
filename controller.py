@@ -183,7 +183,7 @@ class Controller(LeafSystem):
             self.idx += 1
             q_des = self.qs[self.idx]
         elif (
-            err_norm < 6.169018046688123e-02
+            err_norm < 0.01
             and self.idx
             == len(self.qs) - 1  # activate nudging when finally hit final waypoint
         ) or self.movement:  # static latch
@@ -192,7 +192,7 @@ class Controller(LeafSystem):
                 self.plant.world_frame(),
                 self.gripper_body.body_frame(),
             )
-            p_WG = X_WG.translation() - np.array([0, 0.030, 0])
+            p_WG = X_WG.translation() - np.array([0.006, 0.026, 0])
             V_WG = self.plant.EvalBodySpatialVelocityInWorld(
                 self.plant_context, self.gripper_body
             )
@@ -233,7 +233,7 @@ class Controller(LeafSystem):
             self.movement = True
 
             print("tau is ", np.linalg.norm(f_W[:7]))
-            if np.linalg.norm(f_W[:7]) < 0.01:
+            if np.linalg.norm(f_W[:7]) < 0.005:
                 self.wsg_ctrl.set_target(0.06)
 
             return
