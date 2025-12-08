@@ -78,6 +78,18 @@ tray_camera_translation = (
     puzzle_center_z + 0.8,
 )
 
+horizontal_camera_translation = (
+    puzzle_center_x + 0.0,
+    puzzle_center_y - 0.3,
+    puzzle_center_z + 0.05,
+)
+
+vertical_camera_translation = (
+    puzzle_center_x - 0.3,
+    puzzle_center_y + 0.0,
+    puzzle_center_z + 0.05,
+)
+
 
 tray_translations = {
     "rectangle": rectangle_translation,

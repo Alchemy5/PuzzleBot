@@ -333,6 +333,14 @@ def get_tray_pointcloud(diagram: Diagram, context: Context) -> PointCloud:
     return diagram.GetOutputPort("tray.point_cloud").Eval(context)
 
 
+def get_hor_pointcloud(diagram: Diagram, context: Context) -> PointCloud:
+    return diagram.GetOutputPort("hor.point_cloud").Eval(context)
+
+
+def get_ver_pointcloud(diagram: Diagram, context: Context) -> PointCloud:
+    return diagram.GetOutputPort("ver.point_cloud").Eval(context)
+
+
 def get_puzzle_and_tray_pointclouds(
     diagram: Diagram,
     context: Context,
@@ -352,13 +360,9 @@ def get_puzzle_and_tray_pointclouds(
     puzzle_upper = puzzle_center_vec + PUZZLE_HALF_EXTENTS
     puzzle_cloud = crop_aabb(puzzle_pc_full, puzzle_lower, puzzle_upper)
 
-    print_pointcloud_bounds(puzzle_pc_full, "puzzle_full_cloud")
-    print_pointcloud_bounds(puzzle_cloud, "puzzle_cropped_cloud")
-
     # Keep the full puzzle surface so downstream depth-based cavity detection still sees the table.
 
     tray_pc_full = get_tray_pointcloud(diagram, context)
-    print_pointcloud_bounds(tray_pc_full, "tray_full_cloud")
 
     tray_clouds: Dict[str, PointCloud] = {}
 
@@ -367,7 +371,6 @@ def get_puzzle_and_tray_pointclouds(
         tray_pc_filtered_full = _filter_points_above(
             tray_pc_full, table_top_z, clearance
         )
-        print_pointcloud_bounds(tray_pc_filtered_full, "tray_full_filtered_cloud")
         tray_pc_for_cropping = tray_pc_filtered_full
 
     names = list(tray_translations.keys())
@@ -533,7 +536,6 @@ def get_puzzle_and_tray_pointclouds(
         else:
             tray_pc = _filter_by_assignment(tray_pc, piece_index, translations_xy)
 
-        print_pointcloud_bounds(tray_pc, f"tray_{name}_cloud")
         tray_clouds[name] = tray_pc
 
     for name in names:
