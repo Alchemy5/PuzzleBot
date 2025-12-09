@@ -1,0 +1,39 @@
+<sdf version="1.7">
+  <model name="puzzle_square_piece">
+    <link name="square_link">
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>1.0e-04</ixx>
+          <iyy>1.0e-04</iyy>
+          <izz>2.0e-04</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <visual name="square_visual">
+        <geometry>
+          <box>
+            <size>0.055 0.055 0.02</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.85 0.33 0.10 1</ambient>
+          <diffuse>0.85 0.33 0.10 1</diffuse>
+          <specular>0.2 0.2 0.2 1</specular>
+        </material>
+      </visual>
+
+      <collision name="square_collision">
+        <geometry>
+          <box>
+            <size>0.055 0.055 0.02</size>
+          </box>
+        </geometry>
+      </collision>
+
+    </link>
+  </model>
+</sdf>
